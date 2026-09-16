@@ -13,13 +13,12 @@ from app.api.routes.analysis import router as analysis_router
 
 app = FastAPI(
     title="MailRakhwala API",
-    description="AI-Assisted Cryptographic Security Assessment for Email Communications (SIH26159 — SecureMailScope)",
+    description="AI-Assisted Cryptographic Security Posture Assessment for Email Communications (SIH26159)",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS Configuration for local frontend development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -28,7 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Routers
 app.include_router(health_router)
 app.include_router(analysis_router)
 

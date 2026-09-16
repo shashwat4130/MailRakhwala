@@ -1,5 +1,5 @@
 """
-In-memory job management service for CrypticMail.
+In-memory job management service for MailRakhwala.
 Tracks analysis metadata and state transitions.
 """
 
@@ -39,10 +39,6 @@ class JobStore:
         record = JobRecord(analysis_id, filename, storage_path, file_size_bytes)
         self._jobs[analysis_id] = record
         return record
-
-    def clear(self):
-        """Clears all stored jobs between test runs."""
-        self._jobs.clear()
 
     def get_job(self, analysis_id: str) -> Optional[JobRecord]:
         return self._jobs.get(analysis_id)

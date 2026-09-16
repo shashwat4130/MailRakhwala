@@ -6,15 +6,15 @@ const navigation = [
   { name: 'Capture Ingestion', href: '/', icon: UploadCloud },
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Stream Analysis', href: '/analysis', icon: FileSearch },
-  { name: 'Findings', href: '/findings', icon: ShieldAlert },
+  { name: 'Findings & CVEs', href: '/findings', icon: ShieldAlert },
   { name: 'Forensic Reports', href: '/reports', icon: FileText },
 ];
 
 export default function Sidebar() {
   return (
-    <aside className="w-64 border-r border-gray-800 bg-gray-950/40 p-4 flex flex-col justify-between shrink-0">
+    <aside className="w-64 border-r border-gray-800 bg-gray-950/40 p-4 flex flex-col justify-between">
       <div className="space-y-1">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-gray-500 px-3 mb-2">
+        <div className="text-[11px] font-mono uppercase tracking-wider text-gray-400 px-3 mb-2">
           Forensics Console
         </div>
         {navigation.map((item) => {

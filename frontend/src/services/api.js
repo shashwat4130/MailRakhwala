@@ -1,34 +1,36 @@
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000',
-  timeout: 30000,
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
   headers: {
-    'Accept': 'application/json',
+    'Content-Type': 'application/json',
   },
 });
 
 export const checkHealth = async () => {
-  const response = await api.get('/health');
+  const response = await apiClient.get('/health');
   return response.data;
 };
 
-export const uploadCapture = async (file, onUploadProgress) => {
+export const getHealth = checkHealth;
+
+export const uploadCapture = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await api.post('/analysis/upload', formData, {
+  const response = await apiClient.post('/analysis/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    onUploadProgress,
   });
   return response.data;
 };
 
-export const getAnalysisStatus = async (analysisId) => {
-  const response = await api.get(`/analysis/${analysisId}`);
+export const getAnalysisJob = async (analysisId) => {
+  const response = await apiClient.get(`/analysis/${analysisId}`);
   return response.data;
 };
 
-export default api;
+export default apiClient;
