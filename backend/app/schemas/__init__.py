@@ -67,6 +67,13 @@ from .revocation_trust import (
     CRLEvidence,
     OfflineTrustResult,
 )
+from .compliance_engine import (
+    ComplianceStatus,
+    ComplianceEvidence,
+    ComplianceFinding,
+    RuleEvaluationSummary,
+    SessionComplianceReport,
+)
 
 __all__ = [
     "JobStatus",
@@ -120,4 +127,9 @@ __all__ = [
     "OCSPEvidence",
     "CRLEvidence",
     "OfflineTrustResult",
+    "ComplianceStatus",
+    "ComplianceEvidence",
+    "ComplianceFinding",
+    "RuleEvaluationSummary",
+    "SessionComplianceReport",
 ]
