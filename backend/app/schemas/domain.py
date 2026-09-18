@@ -1,7 +1,5 @@
 """
-MailRakhwala Core Domain Data Contracts
-Strictly typed, bounded data models for network sessions, TLS evaluations,
-cryptographic audits, security findings, and posture reports.
+MailRakhwala Core Domain Data Contracts (Step 3 & Step 15 extensions)
 """
 
 from datetime import datetime, timezone
@@ -89,6 +87,8 @@ class ConfidenceLevel(str, Enum):
     MEDIUM = "MEDIUM"
     LOW = "LOW"
     UNKNOWN = "UNKNOWN"
+    CONFIRMED = "HIGH"
+    CONFIRMED_OBSERVED = "HIGH"
 
 
 class EvidenceRecord(BaseModel):
@@ -130,20 +130,15 @@ class ConnectionMetadata(BaseModel):
 
 
 class KeyExchangeAnalysis(BaseModel):
-    """Forensic evaluation of the negotiated key agreement (Steps 3 & 15)."""
     exchange_type: KeyExchangeType = Field(default=KeyExchangeType.UNKNOWN)
     has_forward_secrecy: TriState = Field(default=TriState.UNKNOWN)
     named_group: Optional[str] = Field(default=None)
     named_group_id: Optional[int] = Field(default=None)
-    dh_modulus_length_bits: Optional[int] = Field(default=None, ge=0)
     dh_param_bits: Optional[int] = Field(default=None, ge=0)
-    parameter_evidence: List[EvidenceRecord] = Field(default_factory=list)
-    
-    # Step 15 extensions
-    stream_id: Optional[str] = None
-    negotiated_version: Optional[int] = None
-    selected_cipher_suite_id: Optional[int] = None
-    selected_cipher_suite_name: Optional[str] = None
+    stream_id: Optional[str] = Field(default=None)
+    negotiated_version: Optional[int] = Field(default=None)
+    selected_cipher_suite_id: Optional[int] = Field(default=None)
+    selected_cipher_suite_name: Optional[str] = Field(default=None)
     confidence: ConfidenceLevel = ConfidenceLevel.HIGH
     evidence: List[str] = Field(default_factory=list)
     limitations: List[str] = Field(
