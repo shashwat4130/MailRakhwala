@@ -94,6 +94,46 @@ from app.schemas.posture import (
     PostureDeduction,
     PostureSeverity,
 )
+
+from app.schemas.risk_classification import (
+    BatchRiskClassificationResult,
+    RiskClassificationMetadata,
+    RiskClassificationResult,
+)
+
+from app.schemas.anomaly_detection import (
+    AnomalyDetectionMetadata,
+    AnomalyDetectionResult,
+    BatchAnomalyDetectionResult,
+)
+from app.schemas.ml_features import MLFeatureVector
+from app.schemas.risk_classification import (
+    BatchRiskClassificationResult,
+    RiskClassificationMetadata,
+    RiskClassificationResult,
+)
+
+from app.schemas.anomaly_detection import (
+    AnomalyDetectionMetadata,
+    AnomalyDetectionResult,
+    BatchAnomalyDetectionResult,
+)
+from app.schemas.ml_features import MLFeatureVector
+from app.schemas.risk_classification import (
+    BatchRiskClassificationResult,
+    RiskClassificationMetadata,
+    RiskClassificationResult,
+)
+from app.schemas.shap_explainability import (
+    BatchSHAPExplanationResult,
+    ContributionDirection,
+    GlobalFeatureImportance,
+    SHAPExplanationResult,
+    SHAPFeatureContribution,
+    SHAPMetadata,
+)
+
+
 __all__ = ["ThreatCategory",
     "ThreatMappingStatus",
     "MitreAttackReference",
@@ -101,6 +141,23 @@ __all__ = ["ThreatCategory",
     "ThreatContextMapping",
     "SessionThreatReport",
 
+    "ContributionDirection",
+    "SHAPFeatureContribution",
+    "GlobalFeatureImportance",
+    "SHAPMetadata",
+    "SHAPExplanationResult",
+    "BatchSHAPExplanationResult",
+
+    "MLFeatureVector",
+    
+    "AnomalyDetectionMetadata",
+    "AnomalyDetectionResult",
+    "BatchAnomalyDetectionResult",
+    
+    "RiskClassificationMetadata",
+    "RiskClassificationResult",
+    "BatchRiskClassificationResult",
+ 
     "PostureSeverity",
     "PostureDeduction",
     "CryptographicPostureReport",
