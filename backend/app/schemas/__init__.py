@@ -74,8 +74,28 @@ from .compliance_engine import (
     RuleEvaluationSummary,
     SessionComplianceReport,
 )
+from .vulnerability_mapping import (
+    MappingType,
+    EvidenceConfidence,
+    WeaknessMapping,
+    VulnerabilityMappingReport,
+)
 
-__all__ = [
+from app.schemas.threat_mapping import (
+    MitreAttackReference,
+    SessionThreatReport,
+    ThreatCategory,
+    ThreatContextMapping,
+    ThreatEvidence,
+    ThreatMappingStatus,
+)
+__all__ = ["ThreatCategory",
+    "ThreatMappingStatus",
+    "MitreAttackReference",
+    "ThreatEvidence",
+    "ThreatContextMapping",
+    "SessionThreatReport",
+
     "JobStatus",
     "HealthResponse",
     "AnalysisUploadResponse",
@@ -132,4 +152,8 @@ __all__ = [
     "ComplianceFinding",
     "RuleEvaluationSummary",
     "SessionComplianceReport",
+    "MappingType",
+    "EvidenceConfidence",
+    "WeaknessMapping",
+    "VulnerabilityMappingReport",
 ]
