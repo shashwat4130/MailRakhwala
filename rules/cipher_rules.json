@@ -1,0 +1,97 @@
+{
+  "version": "1.0.0",
+  "approved_ciphers": [
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+    "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+    "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
+    "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"
+  ],
+  "prohibited_ciphers": [
+    {"pattern": "NULL", "severity": "CRITICAL", "rule_id": "RULE-CIPHER-001"},
+    {"pattern": "RC4", "severity": "CRITICAL", "rule_id": "RULE-CIPHER-002"},
+    {"pattern": "3DES", "severity": "HIGH", "rule_id": "RULE-CIPHER-003"},
+    {"pattern": "DES", "severity": "HIGH", "rule_id": "RULE-CIPHER-003"},
+    {"pattern": "_CBC_", "severity": "MEDIUM", "rule_id": "RULE-CIPHER-004"}
+  ],
+  "rules": [
+    {
+      "rule_id": "RULE-CIPHER-001",
+      "category": "CIPHER_SUITE",
+      "title": "Insecure NULL Encryption Cipher Suite Negotiated",
+      "severity": "CRITICAL",
+      "standard": "RFC 5246 / NIST SP 800-52r2",
+      "description": "Negotiated cipher suite provides zero payload encryption.",
+      "remediation": "Disable all NULL cipher suites across all endpoints."
+    },
+    {
+      "rule_id": "RULE-CIPHER-002",
+      "category": "CIPHER_SUITE",
+      "title": "Broken RC4 Stream Cipher Negotiated",
+      "severity": "CRITICAL",
+      "standard": "RFC 7465",
+      "description": "Negotiated cipher suite uses the broken RC4 stream cipher prohibited by RFC 7465.",
+      "remediation": "Disable RC4 cipher suites across all endpoints."
+    },
+    {
+      "rule_id": "RULE-CIPHER-003",
+      "category": "CIPHER_SUITE",
+      "title": "Vulnerable 64-bit Block Cipher (3DES / Triple-DES)",
+      "severity": "HIGH",
+      "standard": "RFC 8996 / CVE-2016-2183",
+      "description": "64-bit block ciphers are susceptible to SWEET32 collision attacks.",
+      "remediation": "Replace 3DES with AES-128-GCM, AES-256-GCM, or ChaCha20-Poly1305."
+    },
+    {
+      "rule_id": "RULE-CIPHER-004",
+      "category": "CIPHER_SUITE",
+      "title": "CBC-Mode Cipher Suite in TLS 1.2",
+      "severity": "MEDIUM",
+      "standard": "NIST SP 800-52r2",
+      "description": "CBC mode ciphers in TLS 1.2 are susceptible to padding oracle attacks.",
+      "remediation": "Migrate to AEAD ciphers (AES-GCM or ChaCha20-Poly1305)."
+    },
+    {
+      "rule_id": "RULE-CIPHER-APPROVED",
+      "category": "CIPHER_SUITE",
+      "title": "Approved AEAD Cipher Suite Negotiated",
+      "severity": "INFO",
+      "standard": "NIST SP 800-52r2",
+      "description": "Negotiated cipher suite complies with NIST SP 800-52r2 approved specifications.",
+      "remediation": "Maintain approved AEAD cipher suite policy."
+    },
+    {
+      "rule_id": "RULE-CIPHER-UNKNOWN",
+      "category": "CIPHER_SUITE",
+      "title": "Unrecognized or Unverified Cipher Suite Negotiated",
+      "severity": "LOW",
+      "standard": "NIST SP 800-52r2",
+      "description": "Negotiated cipher suite is not recognized or not on the approved cipher baseline.",
+      "remediation": "Review negotiated cipher suite and ensure server prioritizes approved AEAD ciphers."
+    },
+    {
+      "rule_id": "RULE-KEX-001",
+      "category": "KEY_EXCHANGE",
+      "title": "Static RSA Key Exchange (Missing Forward Secrecy)",
+      "severity": "HIGH",
+      "standard": "NIST SP 800-52r2",
+      "description": "Static RSA key transport does not provide Perfect Forward Secrecy (PFS).",
+      "remediation": "Configure ephemeral Diffie-Hellman (ECDHE or DHE) key exchange."
+    },
+    {
+      "rule_id": "RULE-KEX-002",
+      "category": "KEY_EXCHANGE",
+      "title": "Weak Diffie-Hellman Modulus (< 2048 bits)",
+      "severity": "HIGH",
+      "standard": "NIST SP 800-52r2 / RFC 7919",
+      "description": "Finite Field DH modulus length is under 2048 bits (vulnerable to Logjam).",
+      "remediation": "Deploy custom Diffie-Hellman parameters >= 2048 bits or migrate to ECDHE."
+    }
+  ]
+}

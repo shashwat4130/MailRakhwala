@@ -1,0 +1,50 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "rule_id": "RULE-TLS-001",
+      "category": "TLS_VERSION",
+      "title": "Obsolete SSL Protocol Version (SSL 2.0 / SSL 3.0)",
+      "severity": "CRITICAL",
+      "standard": "RFC 6176 / RFC 7568",
+      "description": "Observed obsolete SSL protocol version containing critical architectural vulnerabilities.",
+      "remediation": "Disable SSL 2.0 and SSL 3.0 across all mail services. Mandate TLS 1.2 or TLS 1.3."
+    },
+    {
+      "rule_id": "RULE-TLS-002",
+      "category": "TLS_VERSION",
+      "title": "Deprecated TLS Protocol Version (TLS 1.0 / TLS 1.1)",
+      "severity": "HIGH",
+      "standard": "RFC 8996",
+      "description": "Observed deprecated protocol version formally prohibited by RFC 8996.",
+      "remediation": "Disable TLS 1.0 and TLS 1.1. Configure mail listeners to mandate TLS 1.2 minimum."
+    },
+    {
+      "rule_id": "RULE-TLS-003",
+      "category": "TLS_VERSION",
+      "title": "TLS 1.2 Protocol Negotiated",
+      "severity": "INFO",
+      "standard": "RFC 5246 / NIST SP 800-52r2",
+      "description": "Observed TLS 1.2 baseline negotiation.",
+      "remediation": "Maintain configuration; consider upgrading to TLS 1.3 for enhanced security."
+    },
+    {
+      "rule_id": "RULE-TLS-004",
+      "category": "TLS_VERSION",
+      "title": "Modern TLS 1.3 Protocol Negotiated",
+      "severity": "INFO",
+      "standard": "RFC 8446",
+      "description": "Observed modern TLS 1.3 protocol satisfying contemporary cryptographic standards.",
+      "remediation": "Maintain modern TLS 1.3 configuration."
+    },
+    {
+      "rule_id": "RULE-STARTTLS-002",
+      "category": "STARTTLS_SECURITY",
+      "title": "Suspected STARTTLS Stripping / Downgrade",
+      "severity": "HIGH",
+      "standard": "RFC 3207 / RFC 8314",
+      "description": "Observed STARTTLS advertised or requested followed by unencrypted plaintext continuation.",
+      "remediation": "Enforce mandatory TLS upgrade or switch to implicit TLS (Port 465/993/995)."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "severity_levels": {
+    "CRITICAL": {
+      "score_penalty": 30,
+      "description": "Immediate cryptographic compromise or broken primitive"
+    },
+    "HIGH": {
+      "score_penalty": 20,
+      "description": "Severe protocol vulnerability or deprecated algorithm standard"
+    },
+    "MEDIUM": {
+      "score_penalty": 10,
+      "description": "Conditional weakness, configuration anomaly, or suboptimal parameter"
+    },
+    "LOW": {
+      "score_penalty": 5,
+      "description": "Minor policy deviation or advisory hygiene concern"
+    },
+    "INFO": {
+      "score_penalty": 0,
+      "description": "Informational observation or verified compliant configuration"
+    }
+  }
+}

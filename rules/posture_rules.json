@@ -1,0 +1,144 @@
+{
+  "catalog_version": "1.0.0",
+  "engine": "MailRakhwala Posture & Risk Engine",
+  "base_score": 100,
+  "total_rules": 17,
+  "rules": [
+    {
+      "rule_id": "POSTURE-TLS-001",
+      "upstream_rule_id": "RULE-TLS-001",
+      "title": "SSL 2.0 / SSL 3.0 Obsolete Protocol",
+      "penalty": 30,
+      "severity": "CRITICAL",
+      "description": "Critical deduction for obsolete SSL protocol susceptible to trivial cryptanalysis."
+    },
+    {
+      "rule_id": "POSTURE-TLS-002",
+      "upstream_rule_id": "RULE-TLS-002",
+      "title": "TLS 1.0 / TLS 1.1 Deprecated Protocol",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "High deduction for deprecated TLS 1.0/1.1 protocols lacking modern AEAD support."
+    },
+    {
+      "rule_id": "POSTURE-CIPHER-001",
+      "upstream_rule_id": "RULE-CIPHER-001",
+      "title": "NULL Cipher / Plaintext Transport",
+      "penalty": 35,
+      "severity": "CRITICAL",
+      "description": "Critical deduction for cleartext transport or null cipher negotiation enabling passive sniffing."
+    },
+    {
+      "rule_id": "POSTURE-CIPHER-002",
+      "upstream_rule_id": "RULE-CIPHER-002",
+      "title": "RC4 Obsolete Stream Cipher",
+      "penalty": 20,
+      "severity": "HIGH",
+      "description": "Substantial deduction for RC4 keystream bias vulnerabilities."
+    },
+    {
+      "rule_id": "POSTURE-CIPHER-003",
+      "upstream_rule_id": "RULE-CIPHER-003",
+      "title": "64-bit Block Cipher (3DES / DES)",
+      "penalty": 15,
+      "severity": "MEDIUM",
+      "description": "Deduction for use of a legacy 64-bit block cipher such as 3DES/DES."
+    },
+    {
+      "rule_id": "POSTURE-CIPHER-004",
+      "upstream_rule_id": "RULE-CIPHER-004",
+      "title": "CBC-Mode Cipher Suite Usage",
+      "penalty": 10,
+      "severity": "MEDIUM",
+      "description": "Deduction for use of legacy CBC-mode cipher suites."
+    },
+    {
+      "rule_id": "POSTURE-KEX-001",
+      "upstream_rule_id": "RULE-KEX-001",
+      "title": "Static RSA Key Exchange",
+      "penalty": 10,
+      "severity": "MEDIUM",
+      "description": "Deduction for lack of forward secrecy allowing retrospective decryption."
+    },
+    {
+      "rule_id": "POSTURE-KEX-002",
+      "upstream_rule_id": "RULE-KEX-002",
+      "title": "Weak Diffie-Hellman Modulus (<2048-bit)",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "Deduction for weak DH parameters vulnerable to discrete logarithm precomputations."
+    },
+    {
+      "rule_id": "POSTURE-CERT-001",
+      "upstream_rule_id": "RULE-CERT-001",
+      "title": "Expired X.509 Certificate",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "Deduction for expired certificate in validation path."
+    },
+    {
+      "rule_id": "POSTURE-CERT-002",
+      "upstream_rule_id": "RULE-CERT-002",
+      "title": "Premature / Not-Yet-Valid Certificate",
+      "penalty": 10,
+      "severity": "MEDIUM",
+      "description": "Deduction for certificate observed before its notBefore timestamp."
+    },
+    {
+      "rule_id": "POSTURE-CERT-003",
+      "upstream_rule_id": "RULE-CERT-003",
+      "title": "Inadequate RSA Key Size (<2048-bit)",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "Deduction for sub-2048-bit public key failing modern security margins."
+    },
+    {
+      "rule_id": "POSTURE-CERT-004",
+      "upstream_rule_id": "RULE-CERT-004",
+      "title": "Legacy Signature Algorithm (MD5 / SHA-1)",
+      "penalty": 20,
+      "severity": "HIGH",
+      "description": "Deduction for certificate signature using broken digest algorithm."
+    },
+    {
+      "rule_id": "POSTURE-PKI-001",
+      "upstream_rule_id": "RULE-PKI-001",
+      "title": "Self-Signed Certificate Presented",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "Deduction for untrusted self-signed certificate lacking verifiable root path."
+    },
+    {
+      "rule_id": "POSTURE-STARTTLS-001",
+      "upstream_rule_id": "RULE-STARTTLS-001",
+      "title": "STARTTLS Downgrade / Cleartext Stripping",
+      "penalty": 25,
+      "severity": "HIGH",
+      "description": "Deduction for email session downgrade to cleartext transport."
+    },
+    {
+      "rule_id": "POSTURE-IDENTITY-001",
+      "upstream_rule_id": "RULE-IDENTITY-001",
+      "title": "Hostname / SAN Mismatch",
+      "penalty": 15,
+      "severity": "HIGH",
+      "description": "Deduction for mismatch between client SNI and certificate SAN/CN."
+    },
+    {
+      "rule_id": "POSTURE-TRUST-001",
+      "upstream_rule_id": "RULE-TRUST-001",
+      "title": "Certificate Chain Trust Path Failure",
+      "penalty": 20,
+      "severity": "HIGH",
+      "description": "Deduction for unanchored or broken certificate validation chain."
+    },
+    {
+      "rule_id": "POSTURE-REVOC-001",
+      "upstream_rule_id": "RULE-REVOC-001",
+      "title": "Revoked Certificate In Use",
+      "penalty": 30,
+      "severity": "CRITICAL",
+      "description": "Critical deduction for active use of an authoritatively revoked certificate."
+    }
+  ]
+}

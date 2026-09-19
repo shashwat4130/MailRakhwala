@@ -89,12 +89,21 @@ from app.schemas.threat_mapping import (
     ThreatEvidence,
     ThreatMappingStatus,
 )
+from app.schemas.posture import (
+    CryptographicPostureReport,
+    PostureDeduction,
+    PostureSeverity,
+)
 __all__ = ["ThreatCategory",
     "ThreatMappingStatus",
     "MitreAttackReference",
     "ThreatEvidence",
     "ThreatContextMapping",
     "SessionThreatReport",
+
+    "PostureSeverity",
+    "PostureDeduction",
+    "CryptographicPostureReport",
 
     "JobStatus",
     "HealthResponse",

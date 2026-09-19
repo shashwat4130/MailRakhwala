@@ -1,0 +1,77 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "rule_id": "RULE-CERT-001",
+      "category": "CERTIFICATE_VALIDITY",
+      "title": "Expired X.509 Server Certificate",
+      "severity": "HIGH",
+      "standard": "RFC 5280",
+      "description": "Certificate validity period has expired.",
+      "remediation": "Renew and deploy an active, valid server certificate."
+    },
+    {
+      "rule_id": "RULE-CERT-002",
+      "category": "CERTIFICATE_VALIDITY",
+      "title": "Certificate Not Yet Valid",
+      "severity": "MEDIUM",
+      "standard": "RFC 5280",
+      "description": "Certificate not_before timestamp is in the future relative to observation.",
+      "remediation": "Verify server clock synchronization (NTP) and issuance dates."
+    },
+    {
+      "rule_id": "RULE-CERT-003",
+      "category": "CERTIFICATE_VALIDITY",
+      "title": "Insufficient RSA Public Key Length (< 2048 bits)",
+      "severity": "CRITICAL",
+      "standard": "NIST SP 800-52r2",
+      "description": "RSA public key modulus is less than 2048 bits.",
+      "remediation": "Re-issue certificate with an RSA key of at least 2048 bits or ECDSA >= 256 bits."
+    },
+    {
+      "rule_id": "RULE-CERT-004",
+      "category": "CERTIFICATE_VALIDITY",
+      "title": "Weak Signature Algorithm in Certificate (MD5 / SHA-1)",
+      "severity": "CRITICAL",
+      "standard": "RFC 5280 / NIST SP 800-52r2",
+      "description": "Certificate signed using deprecated hash algorithm (MD5 or SHA-1).",
+      "remediation": "Re-issue certificate signed using SHA-256 or stronger digest."
+    },
+    {
+      "rule_id": "RULE-PKI-001",
+      "category": "CERTIFICATE_CHAIN",
+      "title": "Self-Signed Server Certificate",
+      "severity": "MEDIUM",
+      "standard": "RFC 5280",
+      "description": "Subject DN equals Issuer DN; certificate signature is self-asserted.",
+      "remediation": "Deploy a certificate issued by a recognized public or enterprise CA."
+    },
+    {
+      "rule_id": "RULE-IDENTITY-001",
+      "category": "IDENTITY_ALIGNMENT",
+      "title": "Certificate Identity (SAN) Does Not Match Observed TLS SNI",
+      "severity": "MEDIUM",
+      "standard": "RFC 6066 / RFC 5280",
+      "description": "Certificate identity (SAN) does not match the observed TLS server name (SNI).",
+      "remediation": "Ensure server certificate includes the targeted hostname in Subject Alternative Names."
+    },
+    {
+      "rule_id": "RULE-TRUST-001",
+      "category": "CERTIFICATE_CHAIN",
+      "title": "Certificate Chain Path Validation Failed",
+      "severity": "HIGH",
+      "standard": "RFC 5280",
+      "description": "Certificate chain could not be validated offline against the configured trust store.",
+      "remediation": "Ensure server bundles intermediate certificates and deploy certificates issued by a recognized CA."
+    },
+    {
+      "rule_id": "RULE-REVOC-001",
+      "category": "CERTIFICATE_VALIDITY",
+      "title": "Certificate Explicitly Revoked in Captured OCSP Response",
+      "severity": "CRITICAL",
+      "standard": "RFC 6960",
+      "description": "Stapled OCSP response in TLS handshake indicates certificate status is REVOKED.",
+      "remediation": "Immediately revoke, replace, and deploy a valid server certificate."
+    }
+  ]
+}
