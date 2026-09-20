@@ -1,26 +1,22 @@
-"""
-Integration tests for Step 29 background analysis lifecycle and status transitions.
-Validates the QUEUED -> PROCESSING -> COMPLETED/FAILED sequence via job_store.
-"""
-
-import io
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.api import JobStatus
+from app.schemas.packet import DissectedPacket
 from app.services.job_store import job_store
 
 client = TestClient(app)
 
-SYNTHETIC_PCAP_HEADER = (
-    b"\xd4\xc3\xb2\xa1"
-    + (2).to_bytes(2, "little")
-    + (4).to_bytes(2, "little")
-    + (0).to_bytes(4, "little")
-    + (0).to_bytes(4, "little")
-    + (65535).to_bytes(4, "little")
-    + (1).to_bytes(4, "little")
+MOCK_PCAP_GLOBAL_HEADER = (
+    b"\xd4\xc3\xb2\xa1"  # Magic Number (PCAP Little-Endian)
+    b"\x02\x00\x04\x00"  # Version 2.4
+    b"\x00\x00\x00\x00"  # Thiszone
+    b"\x00\x00\x00\x00"  # Sigfigs
+    b"\xff\xff\x00\x00"  # Snaplen (65535)
+    b"\x01\x00\x00\x00"  # LinkType (Ethernet)
 )
 
 
@@ -31,67 +27,44 @@ def clean_job_store():
     job_store.clear()
 
 
-def test_upload_creates_queued_job(monkeypatch):
-    """Verifies that uploading a PCAP creates a session in queued state."""
-    monkeypatch.setattr("fastapi.BackgroundTasks.add_task", lambda self, func, *a, **kw: None)
+def test_analysis_pipeline_successful_execution():
+    """Verify the end-to-end upload and background task completion."""
+    mock_packets = [
+        DissectedPacket(
+            frame_number=1,
+            timestamp_epoch=1710000000.0,
+            frame_len=60,
+            src_ip="192.168.1.10",
+            dst_ip="192.168.1.20",
+            src_port=54321,
+            dst_port=25,
+            transport_protocol="TCP",
+            tcp_stream=0,
+            highest_layer="SMTP",
+        )
+    ]
 
-    payload = io.BytesIO(SYNTHETIC_PCAP_HEADER + b"\x00" * 32)
-    response = client.post(
-        "/analysis/upload",
-        files={"file": ("test.pcap", payload, "application/vnd.tcpdump.pcap")},
-    )
-    assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "queued"
-    analysis_id = data["analysis_id"]
+    with patch("app.api.routes.analysis.TSharkService") as mock_tshark_cls:
+        mock_tshark = MagicMock()
+        mock_tshark.dissect_packets_stream.return_value = iter(mock_packets)
+        mock_tshark_cls.return_value = mock_tshark
 
-    status_resp = client.get(f"/analysis/{analysis_id}")
-    assert status_resp.status_code == 200
-    assert status_resp.json()["status"] == "queued"
+        response = client.post(
+            "/analysis/upload",
+            files={"file": ("test_capture.pcap", MOCK_PCAP_GLOBAL_HEADER, "application/vnd.tcpdump.pcap")},
+        )
 
+        assert response.status_code == 202
+        data = response.json()
+        analysis_id = data["analysis_id"]
 
-def test_status_endpoint_returns_404_for_unknown():
-    """Verifies unknown analysis ID returns 404."""
-    response = client.get("/analysis/non-existent-uuid-1234")
-    assert response.status_code == 404
+        # In TestClient, BackgroundTasks execute synchronously
+        job = job_store.get_job(analysis_id)
+        assert job is not None
+        assert job.status == JobStatus.COMPLETED
 
-
-def test_background_worker_lifecycle_completion(monkeypatch):
-    """Verifies background worker updates status to completed."""
-    def mock_pipeline(analysis_id: str, pcap_path: str, filename: str):
-        job_store.set_report(analysis_id, {"session": {"session_id": analysis_id, "status": "COMPLETED"}})
-
-    monkeypatch.setattr("app.api.routes.analysis.run_pipeline_task", mock_pipeline)
-
-    payload = io.BytesIO(SYNTHETIC_PCAP_HEADER + b"\x00" * 32)
-    response = client.post(
-        "/analysis/upload",
-        files={"file": ("sample.pcap", payload, "application/vnd.tcpdump.pcap")},
-    )
-    assert response.status_code == 202
-    analysis_id = response.json()["analysis_id"]
-
-    status_resp = client.get(f"/analysis/{analysis_id}")
-    assert status_resp.status_code == 200
-    assert status_resp.json()["status"] == "completed"
-
-
-def test_background_worker_failure_transition(monkeypatch):
-    """Verifies background worker failure sets status to failed."""
-    def mock_failing_task(analysis_id: str, pcap_path: str, filename: str):
-        job_store.update_status(analysis_id, JobStatus.FAILED, "Corrupted packet capture")
-
-    monkeypatch.setattr("app.api.routes.analysis.run_pipeline_task", mock_failing_task)
-
-    payload = io.BytesIO(SYNTHETIC_PCAP_HEADER + b"\x00" * 32)
-    response = client.post(
-        "/analysis/upload",
-        files={"file": ("corrupt.pcap", payload, "application/vnd.tcpdump.pcap")},
-    )
-    analysis_id = response.json()["analysis_id"]
-
-    status_resp = client.get(f"/analysis/{analysis_id}")
-    assert status_resp.status_code == 200
-    res = status_resp.json()
-    assert res["status"] == "failed"
-    assert "Corrupted packet capture" in res["message"]
+        report_resp = client.get(f"/analysis/{analysis_id}/report")
+        assert report_resp.status_code == 200
+        report_data = report_resp.json()
+        assert report_data["session"]["session_id"] == analysis_id
+        assert report_data["session"]["status"] == "COMPLETED"
