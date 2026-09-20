@@ -1,45 +1,69 @@
-import React, { useState, useRef } from 'react';
-import { uploadCapture } from '../services/api';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Upload, FileUp, RefreshCw, AlertTriangle, ArrowRight } from 'lucide-react';
+import { uploadCapture, getAnalysisJob, setActiveAnalysisId } from '../services/api';
 
 export default function Home() {
+  const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleFileChange = (e) => {
-    const selected = e.target.files?.[0];
-    setErrorMessage(null);
-    setUploadResult(null);
+  useEffect(() => {
+    if (!uploadResult?.analysis_id || jobStatus === 'completed' || jobStatus === 'failed') {
+      return;
+    }
 
-    if (selected) {
-      const lower = selected.name.toLowerCase();
-      if (!lower.endsWith('.pcap') && !lower.endsWith('.pcapng')) {
-        setErrorMessage('Only .pcap and .pcapng packet capture files are supported.');
+    const interval = setInterval(async () => {
+      try {
+        const job = await getAnalysisJob(uploadResult.analysis_id);
+        setJobStatus(job.status);
+        if (job.status === 'completed') {
+          setActiveAnalysisId(uploadResult.analysis_id);
+          clearInterval(interval);
+        } else if (job.status === 'failed') {
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error("Status check failed:", err);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [uploadResult, jobStatus]);
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      const ext = selectedFile.name.toLowerCase();
+      if (!ext.endsWith('.pcap') && !ext.endsWith('.pcapng')) {
+        setErrorMessage('Only .pcap and .pcapng files are supported.');
         setFile(null);
         return;
       }
-      setFile(selected);
+      setFile(selectedFile);
+      setErrorMessage(null);
+      setUploadResult(null);
+      setJobStatus(null);
     }
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setErrorMessage('Please select a .pcap or .pcapng file first.');
-      return;
-    }
-
+    if (!file) return;
     setUploading(true);
     setErrorMessage(null);
-    setUploadResult(null);
 
     try {
       const result = await uploadCapture(file);
       setUploadResult(result);
+      setJobStatus(result.status || 'queued');
+      setActiveAnalysisId(result.analysis_id);
     } catch (err) {
-      const detail = err.response?.data?.detail || err.message || 'Capture upload failed.';
-      setErrorMessage(detail);
+      const msg = err.response?.data?.detail || 'Failed to upload and enqueue capture.';
+      setErrorMessage(msg);
     } finally {
       setUploading(false);
     }
@@ -49,62 +73,58 @@ export default function Home() {
     setFile(null);
     setUploadResult(null);
     setErrorMessage(null);
+    setJobStatus(null);
+    setActiveAnalysisId(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-xl font-bold tracking-tight text-white">Capture File Ingestion</h2>
-        <p className="text-sm text-gray-400 mt-1">
-          Passive, zero-decryption cryptographic inspection for email communications.
-        </p>
-      </div>
-
-      <div className="border border-dashed border-gray-800 hover:border-gray-700 bg-gray-950/60 rounded-xl py-8 px-6 text-center transition-colors">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept=".pcap,.pcapng"
-          className="hidden"
-          id="pcap-file-input"
-        />
-
-        <div className="max-w-md mx-auto space-y-4">
-          <p className="text-xs text-gray-400">
-            Select a <code className="text-gray-300">.pcap</code> or <code className="text-gray-300">.pcapng</code> capture file to queue for analysis.
+    <div className="space-y-6">
+      <div className="border border-gray-800 bg-gray-900/50 rounded-xl p-8 backdrop-blur-sm relative overflow-hidden">
+        <div className="max-w-2xl mx-auto text-center space-y-4">
+          <h2 className="text-xl font-bold text-white tracking-tight">Capture File Ingestion</h2>
+          <p className="text-sm text-gray-400">
+            Passive, zero-decryption cryptographic inspection for email communications.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <label
-              htmlFor="pcap-file-input"
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer inline-flex items-center justify-center shadow-sm"
-            >
-              {file ? 'Change Capture File' : 'Browse PCAP / PCAPNG'}
-            </label>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".pcap,.pcapng"
+            className="hidden"
+          />
 
+          <div className="pt-4 flex items-center justify-center gap-3">
             <button
               type="button"
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors inline-flex items-center justify-center ${
-                !file || uploading
-                  ? 'bg-gray-800/80 text-gray-500 border border-gray-800 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-sm'
-              }`}
+              onClick={() => fileInputRef.current?.click()}
+              className="px-5 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer inline-flex items-center gap-2 shadow-sm"
             >
-              {uploading ? 'Ingesting & Validating...' : 'Upload & Enqueue'}
+              <FileUp className="w-4 h-4" />
+              {file ? 'Change Capture File' : 'Browse PCAP / PCAPNG'}
             </button>
+
+            {file && (
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={uploading}
+                className="px-5 py-2.5 text-sm font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-800 disabled:text-gray-500 text-white transition-colors cursor-pointer inline-flex items-center gap-2 shadow-sm"
+              >
+                {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? 'Ingesting...' : 'Upload & Enqueue'}
+              </button>
+            )}
 
             {(file || uploadResult || errorMessage) && (
               <button
                 type="button"
                 onClick={handleReset}
                 disabled={uploading}
-                className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-gray-400 hover:text-white border border-gray-800 transition-colors cursor-pointer"
+                className="px-4 py-2.5 text-sm font-medium rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
               >
                 Reset
               </button>
@@ -112,28 +132,58 @@ export default function Home() {
           </div>
 
           {file && (
-            <div className="text-xs font-mono text-gray-300 pt-1">
+            <div className="text-xs font-mono text-gray-400 pt-1">
               Selected: <span className="text-blue-400 font-semibold">{file.name}</span> ({(file.size / 1024).toFixed(1)} KB)
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="mt-4 p-4 rounded-lg bg-red-950/40 border border-red-800/60 text-red-300 text-sm flex items-center justify-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className="mt-6 p-5 rounded-xl bg-gray-950 border border-gray-800 text-left space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                <span className="text-gray-400">Analysis ID:</span>
+                <span className="text-emerald-400 font-semibold">{uploadResult.analysis_id}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                <span className="text-gray-400">Status:</span>
+                <span className={`px-2 py-0.5 rounded font-bold uppercase ${
+                  jobStatus === 'completed'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                    : jobStatus === 'failed'
+                    ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 animate-pulse'
+                }`}>
+                  {jobStatus || uploadResult.status}
+                </span>
+              </div>
+
+              {jobStatus === 'completed' ? (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/dashboard')}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-sans text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-950/50"
+                  >
+                    Analysis Complete — View Dashboard
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-gray-400 flex items-center gap-2 pt-1 font-sans">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                  Processing cryptographic streams and posture metrics...
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
-
-      {errorMessage && (
-        <div className="p-4 rounded-lg bg-rose-950/30 border border-rose-800/50 text-rose-300 text-sm">
-          <strong className="text-rose-200">Validation Error:</strong> {errorMessage}
-        </div>
-      )}
-
-      {uploadResult && (
-        <div className="p-4 rounded-lg bg-emerald-950/30 border border-emerald-800/50 text-emerald-300 text-sm space-y-1">
-          <div className="font-semibold text-emerald-200">Capture Ingested Successfully</div>
-          <div className="font-mono text-xs text-emerald-300/90">Filename: <span className="text-white">{uploadResult.filename}</span></div>
-          <div className="font-mono text-xs text-emerald-300/90">Analysis ID: <span className="text-emerald-400">{uploadResult.analysis_id}</span></div>
-          <div className="font-mono text-xs text-emerald-300/90">Status: <span className="uppercase text-amber-400">{uploadResult.status}</span></div>
-          <div className="text-xs text-emerald-400/80 pt-1">{uploadResult.message}</div>
-        </div>
-      )}
     </div>
   );
 }

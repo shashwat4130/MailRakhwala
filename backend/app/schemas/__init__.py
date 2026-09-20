@@ -1,87 +1,91 @@
 """Domain and API schemas package exports."""
 
+from .api import (
+    AnalysisJobResponse,
+    AnalysisUploadResponse,
+    HealthResponse,
+    JobStatus,
+)
 from .domain import *  # noqa: F403
-from .api import JobStatus, HealthResponse, AnalysisUploadResponse, AnalysisJobResponse
 from .starttls_downgrade import (
+    DowngradeAnalysisResult,
     DowngradeAssessmentStatus,
-    DowngradeIndicatorType,
     DowngradeEvidence,
     DowngradeFinding,
-    DowngradeAnalysisResult,
+    DowngradeIndicatorType,
 )
 from .tls_record import (
-    TLSRecordContentType,
-    TLSRecordVersion,
-    TLSRecordParseStatus,
     TLSRecord,
+    TLSRecordContentType,
     TLSRecordParseResult,
+    TLSRecordParseStatus,
+    TLSRecordVersion,
 )
 from .tls_client_hello import (
+    ClientHelloParseResult,
     ClientHelloParseStatus,
-    TLSExtension,
     KeyShareEntry,
     TLSClientHello,
-    ClientHelloParseResult,
+    TLSExtension,
 )
 from .tls_server_hello import (
-    ServerHelloParseStatus,
     ServerHelloKeyShare,
-    TLSServerHello,
     ServerHelloParseResult,
+    ServerHelloParseStatus,
+    TLSServerHello,
 )
 from .certificate_extraction import (
+    CertificateChainExtractionResult,
     CertificateExtractionStatus,
     RawExtractedCertificate,
-    CertificateChainExtractionResult,
 )
 from .certificate_parsing import (
     CertificateParseStatus,
     DistinguishedName,
-    SubjectAlternativeNames,
-    ParsedKeyParameters,
-    ParsedExtension,
     ParsedCertificate,
     ParsedCertificateChain,
+    ParsedExtension,
+    ParsedKeyParameters,
+    SubjectAlternativeNames,
 )
 from .certificate_security_audit import (
-    CertificateFindingType,
     CertificateEvidence,
+    CertificateFindingType,
+    CertificateSecurityAuditResult,
     CertificateSecurityFinding,
     SingleCertificateAudit,
-    CertificateSecurityAuditResult,
 )
 from .identity_analysis import (
-    IdentityStatus,
-    IdentityRelationshipType,
-    IdentityRelationship,
     IdentityAnalysisResult,
+    IdentityRelationship,
+    IdentityRelationshipType,
+    IdentityStatus,
 )
 from .revocation_trust import (
-    TrustValidationStatus,
-    OCSPObservedStatus,
-    OCSPVerificationStatus,
+    CRLEvidence,
     CRLEvidenceStatus,
-    TrustAnchorEvidence,
     CertificateTrustEvidence,
     OCSPEvidence,
-    CRLEvidence,
+    OCSPObservedStatus,
+    OCSPVerificationStatus,
     OfflineTrustResult,
+    TrustAnchorEvidence,
+    TrustValidationStatus,
 )
 from .compliance_engine import (
-    ComplianceStatus,
     ComplianceEvidence,
     ComplianceFinding,
+    ComplianceStatus,
     RuleEvaluationSummary,
     SessionComplianceReport,
 )
 from .vulnerability_mapping import (
-    MappingType,
     EvidenceConfidence,
-    WeaknessMapping,
+    MappingType,
     VulnerabilityMappingReport,
+    WeaknessMapping,
 )
-
-from app.schemas.threat_mapping import (
+from .threat_mapping import (
     MitreAttackReference,
     SessionThreatReport,
     ThreatCategory,
@@ -89,42 +93,23 @@ from app.schemas.threat_mapping import (
     ThreatEvidence,
     ThreatMappingStatus,
 )
-from app.schemas.posture import (
+from .posture import (
     CryptographicPostureReport,
     PostureDeduction,
     PostureSeverity,
 )
-
-from app.schemas.risk_classification import (
-    BatchRiskClassificationResult,
-    RiskClassificationMetadata,
-    RiskClassificationResult,
-)
-
-from app.schemas.anomaly_detection import (
+from .ml_features import MLFeatureVector
+from .anomaly_detection import (
     AnomalyDetectionMetadata,
     AnomalyDetectionResult,
     BatchAnomalyDetectionResult,
 )
-from app.schemas.ml_features import MLFeatureVector
-from app.schemas.risk_classification import (
+from .risk_classification import (
     BatchRiskClassificationResult,
     RiskClassificationMetadata,
     RiskClassificationResult,
 )
-
-from app.schemas.anomaly_detection import (
-    AnomalyDetectionMetadata,
-    AnomalyDetectionResult,
-    BatchAnomalyDetectionResult,
-)
-from app.schemas.ml_features import MLFeatureVector
-from app.schemas.risk_classification import (
-    BatchRiskClassificationResult,
-    RiskClassificationMetadata,
-    RiskClassificationResult,
-)
-from app.schemas.shap_explainability import (
+from .shap_explainability import (
     BatchSHAPExplanationResult,
     ContributionDirection,
     GlobalFeatureImportance,
@@ -132,45 +117,31 @@ from app.schemas.shap_explainability import (
     SHAPFeatureContribution,
     SHAPMetadata,
 )
+from .report_export import (
+    ComprehensiveAnalysisReport,
+    PracticalRecommendation,
+    ProtocolSecuritySummary,
+    SessionMetadata,
+)
 
-
-__all__ = ["ThreatCategory",
-    "ThreatMappingStatus",
-    "MitreAttackReference",
-    "ThreatEvidence",
-    "ThreatContextMapping",
-    "SessionThreatReport",
-
-    "ContributionDirection",
-    "SHAPFeatureContribution",
-    "GlobalFeatureImportance",
-    "SHAPMetadata",
-    "SHAPExplanationResult",
-    "BatchSHAPExplanationResult",
-
-    "MLFeatureVector",
-    
-    "AnomalyDetectionMetadata",
-    "AnomalyDetectionResult",
-    "BatchAnomalyDetectionResult",
-    
-    "RiskClassificationMetadata",
-    "RiskClassificationResult",
-    "BatchRiskClassificationResult",
- 
-    "PostureSeverity",
-    "PostureDeduction",
-    "CryptographicPostureReport",
-
+__all__ = [
+    # Domain & Session
+    "SessionMetadata",
+    "ProtocolSecuritySummary",
+    "PracticalRecommendation",
+    "ComprehensiveAnalysisReport",
+    # API
     "JobStatus",
     "HealthResponse",
     "AnalysisUploadResponse",
     "AnalysisJobResponse",
+    # STARTTLS Downgrade
     "DowngradeAssessmentStatus",
     "DowngradeIndicatorType",
     "DowngradeEvidence",
     "DowngradeFinding",
     "DowngradeAnalysisResult",
+    # TLS Handshake & Records
     "TLSRecordContentType",
     "TLSRecordVersion",
     "TLSRecordParseStatus",
@@ -185,6 +156,7 @@ __all__ = ["ThreatCategory",
     "ServerHelloKeyShare",
     "TLSServerHello",
     "ServerHelloParseResult",
+    # Certificate Analysis & Trust
     "CertificateExtractionStatus",
     "RawExtractedCertificate",
     "CertificateChainExtractionResult",
@@ -213,6 +185,7 @@ __all__ = ["ThreatCategory",
     "OCSPEvidence",
     "CRLEvidence",
     "OfflineTrustResult",
+    # Compliance & Vulnerabilities
     "ComplianceStatus",
     "ComplianceEvidence",
     "ComplianceFinding",
@@ -222,4 +195,28 @@ __all__ = ["ThreatCategory",
     "EvidenceConfidence",
     "WeaknessMapping",
     "VulnerabilityMappingReport",
+    # Threat & Posture
+    "ThreatCategory",
+    "ThreatMappingStatus",
+    "MitreAttackReference",
+    "ThreatEvidence",
+    "ThreatContextMapping",
+    "SessionThreatReport",
+    "PostureSeverity",
+    "PostureDeduction",
+    "CryptographicPostureReport",
+    # Machine Learning & Explainability
+    "MLFeatureVector",
+    "AnomalyDetectionMetadata",
+    "AnomalyDetectionResult",
+    "BatchAnomalyDetectionResult",
+    "RiskClassificationMetadata",
+    "RiskClassificationResult",
+    "BatchRiskClassificationResult",
+    "ContributionDirection",
+    "SHAPFeatureContribution",
+    "GlobalFeatureImportance",
+    "SHAPMetadata",
+    "SHAPExplanationResult",
+    "BatchSHAPExplanationResult",
 ]

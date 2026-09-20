@@ -9,6 +9,22 @@ const apiClient = axios.create({
   },
 });
 
+export const STORAGE_ANALYSIS_KEY = 'active_analysis_id';
+
+export const getActiveAnalysisId = () => {
+  return localStorage.getItem(STORAGE_ANALYSIS_KEY) || null;
+};
+
+export const setActiveAnalysisId = (id) => {
+  if (id) {
+    localStorage.setItem(STORAGE_ANALYSIS_KEY, id);
+    window.dispatchEvent(new Event('analysisIdChanged'));
+  } else {
+    localStorage.removeItem(STORAGE_ANALYSIS_KEY);
+    window.dispatchEvent(new Event('analysisIdChanged'));
+  }
+};
+
 export const checkHealth = async () => {
   const response = await apiClient.get('/health');
   return response.data;
@@ -31,6 +47,15 @@ export const uploadCapture = async (file) => {
 export const getAnalysisJob = async (analysisId) => {
   const response = await apiClient.get(`/analysis/${analysisId}`);
   return response.data;
+};
+
+export const getAnalysisReport = async (analysisId) => {
+  const response = await apiClient.get(`/analysis/${analysisId}/report`);
+  return response.data;
+};
+
+export const exportReportPDFUrl = (analysisId) => {
+  return `${API_BASE_URL}/analysis/${analysisId}/report/pdf`;
 };
 
 export default apiClient;

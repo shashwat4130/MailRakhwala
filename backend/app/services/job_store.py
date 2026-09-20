@@ -1,10 +1,10 @@
 """
 In-memory job management service for MailRakhwala.
-Tracks analysis metadata and state transitions.
+Tracks analysis metadata, state transitions, and completed report data.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from app.schemas.api import JobStatus, AnalysisJobResponse
 
 
@@ -18,6 +18,7 @@ class JobRecord:
         self.message = "Analysis queued"
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = self.created_at
+        self.report_data: Optional[Dict[str, Any]] = None
 
     def to_response(self) -> AnalysisJobResponse:
         return AnalysisJobResponse(
@@ -44,12 +45,21 @@ class JobStore:
         return self._jobs.get(analysis_id)
 
     def update_status(self, analysis_id: str, status: JobStatus, message: Optional[str] = None) -> Optional[JobRecord]:
-        job = self._jobs.get(analysis_id)
+        job = self.get_job(analysis_id)
         if job:
             job.status = status
             job.updated_at = datetime.now(timezone.utc)
             if message:
                 job.message = message
+        return job
+
+    def set_report(self, analysis_id: str, report_data: Dict[str, Any]) -> Optional[JobRecord]:
+        job = self.get_job(analysis_id)
+        if job:
+            job.report_data = report_data
+            job.status = JobStatus.COMPLETED
+            job.message = "Analysis completed successfully"
+            job.updated_at = datetime.now(timezone.utc)
         return job
 
     def clear(self):
