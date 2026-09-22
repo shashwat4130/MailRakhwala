@@ -45,6 +45,15 @@
       "standard": "RFC 3207 / RFC 8314",
       "description": "Observed STARTTLS advertised or requested followed by unencrypted plaintext continuation.",
       "remediation": "Enforce mandatory TLS upgrade or switch to implicit TLS (Port 465/993/995)."
+    },
+    {
+      "rule_id": "RULE-PLAINTEXT-001",
+      "category": "STARTTLS_SECURITY",
+      "title": "Plaintext Email Transport Observed",
+      "severity": "HIGH",
+      "standard": "RFC 8314",
+      "description": "Observed SMTP, IMAP, or POP3 application traffic continued in plaintext without a TLS transition. When SMTP authentication is also observed, credentials are exposed on the captured plaintext transport.",
+      "remediation": "Require TLS protection for authenticated email transport and prefer mandatory TLS or implicit TLS where supported."
     }
   ]
 }

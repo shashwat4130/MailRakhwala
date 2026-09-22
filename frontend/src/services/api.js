@@ -32,25 +32,50 @@ export const checkHealth = async () => {
 
 export const getHealth = checkHealth;
 
+/**
+ * Upload a PCAP / PCAPNG capture.
+ *
+ * IMPORTANT:
+ * This intentionally uses axios directly instead of apiClient.
+ * apiClient has a global JSON Content-Type header, while this request
+ * must be multipart/form-data.
+ */
 export const uploadCapture = async (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
+  if (!file) {
+    throw new Error('No capture file selected.');
+  }
 
-  const response = await apiClient.post('/analysis/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  const formData = new FormData();
+
+  formData.append('file', file, file.name);
+
+  const response = await axios.post(
+    `${API_BASE_URL}/analysis/upload`,
+    formData
+  );
+
   return response.data;
 };
 
 export const getAnalysisJob = async (analysisId) => {
+  if (!analysisId) {
+    throw new Error('Analysis ID is required.');
+  }
+
   const response = await apiClient.get(`/analysis/${analysisId}`);
+
   return response.data;
 };
 
 export const getAnalysisReport = async (analysisId) => {
-  const response = await apiClient.get(`/analysis/${analysisId}/report`);
+  if (!analysisId) {
+    throw new Error('Analysis ID is required.');
+  }
+
+  const response = await apiClient.get(
+    `/analysis/${analysisId}/report`
+  );
+
   return response.data;
 };
 

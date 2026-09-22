@@ -1,33 +1,82 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar';
+
 import Sidebar from './components/Sidebar';
+
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Findings from './pages/Findings';
 import Reports from './pages/Reports';
 
+function ApplicationShell({ children }) {
+  return (
+    <div className="min-h-screen bg-white text-slate-900 font-sans antialiased">
+      <div className="flex min-h-screen">
+        <Sidebar />
+
+        <main className="min-w-0 flex-1 overflow-y-auto bg-white">
+          <div className="w-full min-h-screen">
+            {children}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-[#0B0F19] text-gray-100 font-sans antialiased">
-        <Navbar />
-        <div className="flex-1 flex overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-8">
-            <div className="max-w-7xl mx-auto">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/analysis" element={<Analysis />} />
-                <Route path="/findings" element={<Findings />} />
-                <Route path="/reports" element={<Reports />} />
-              </Routes>
-            </div>
-          </main>
-        </div>
-      </div>
+      <Routes>
+
+        {/* Home / PCAP Upload */}
+        <Route
+          path="/"
+          element={<Home />}
+        />
+
+        {/* Dashboard */}
+        <Route
+          path="/dashboard"
+          element={
+            <ApplicationShell>
+              <Dashboard />
+            </ApplicationShell>
+          }
+        />
+
+        {/* Analysis */}
+        <Route
+          path="/analysis"
+          element={
+            <ApplicationShell>
+              <Analysis />
+            </ApplicationShell>
+          }
+        />
+
+        {/* Findings */}
+        <Route
+          path="/findings"
+          element={
+            <ApplicationShell>
+              <Findings />
+            </ApplicationShell>
+          }
+        />
+
+        {/* Reports */}
+        <Route
+          path="/reports"
+          element={
+            <ApplicationShell>
+              <Reports />
+            </ApplicationShell>
+          }
+        />
+
+      </Routes>
     </BrowserRouter>
   );
 }

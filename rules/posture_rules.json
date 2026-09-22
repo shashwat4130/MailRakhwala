@@ -2,7 +2,7 @@
   "catalog_version": "1.0.0",
   "engine": "MailRakhwala Posture & Risk Engine",
   "base_score": 100,
-  "total_rules": 17,
+  "total_rules": 19,
   "rules": [
     {
       "rule_id": "POSTURE-TLS-001",
@@ -115,6 +115,24 @@
       "penalty": 25,
       "severity": "HIGH",
       "description": "Deduction for email session downgrade to cleartext transport."
+    },
+    {
+      "rule_id": "POSTURE-STARTTLS-002",
+      "upstream_rule_id": "RULE-STARTTLS-002",
+      "title": "STARTTLS Advertised but Plaintext Continued",
+      "penalty": 25,
+      "severity": "HIGH",
+      "description": "Deduction for an email server advertising STARTTLS while the captured client session continued in unencrypted plaintext without a TLS upgrade. If plaintext SMTP authentication is also directly observed, an additional 20-point credential-exposure deduction is applied by the posture engine.",
+      "plaintext_auth_additional_penalty": 20
+    },
+    {
+      "rule_id": "POSTURE-PLAINTEXT-001",
+      "upstream_rule_id": "RULE-PLAINTEXT-001",
+      "title": "Plaintext Email Transport",
+      "penalty": 35,
+      "severity": "HIGH",
+      "description": "Deduction for observed SMTP/IMAP/POP3 application traffic carried without a TLS transition. If plaintext SMTP authentication is also directly observed, an additional 20-point credential-exposure deduction is applied by the posture engine.",
+      "plaintext_auth_additional_penalty": 20
     },
     {
       "rule_id": "POSTURE-IDENTITY-001",

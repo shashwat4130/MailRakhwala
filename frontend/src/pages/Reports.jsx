@@ -1,13 +1,45 @@
-import React, { useEffect, useState } from 'react';
-import { FileText, Download, ShieldAlert, RefreshCw } from 'lucide-react';
-import { getActiveAnalysisId, getAnalysisReport, exportReportPDFUrl } from '../services/api';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  FileText,
+  Download,
+  ShieldAlert,
+  RefreshCw,
+  ShieldCheck,
+  Network,
+  Mail,
+  LockKeyhole,
+  AlertTriangle,
+} from 'lucide-react';
+import {
+  getActiveAnalysisId,
+  getAnalysisReport,
+  exportReportPDFUrl,
+} from '../services/api';
+
+const EMAIL_PROTOCOLS = new Set([
+  'SMTP',
+  'SMTPS',
+  'IMAP',
+  'IMAPS',
+  'POP3',
+  'POP3S',
+]);
+
+function normalizeProtocol(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
 
 export default function Reports() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Check custom helper, with fallback to legacy keys if Dashboard used them
   const resolveCurrentId = () => {
     return (
       getActiveAnalysisId() ||
@@ -20,9 +52,13 @@ export default function Reports() {
   const [analysisId, setAnalysisId] = useState(resolveCurrentId());
 
   useEffect(() => {
-    const handleIdChange = () => setAnalysisId(resolveCurrentId());
+    const handleIdChange = () => {
+      setAnalysisId(resolveCurrentId());
+    };
+
     window.addEventListener('analysisIdChanged', handleIdChange);
     window.addEventListener('storage', handleIdChange);
+
     return () => {
       window.removeEventListener('analysisIdChanged', handleIdChange);
       window.removeEventListener('storage', handleIdChange);
@@ -31,118 +67,539 @@ export default function Reports() {
 
   useEffect(() => {
     const currentId = resolveCurrentId();
+
     if (!currentId) {
+      setReport(null);
+      setError(null);
       setLoading(false);
       return;
     }
 
+    let cancelled = false;
+
     setLoading(true);
+    setError(null);
+
     getAnalysisReport(currentId)
       .then((data) => {
+        if (cancelled) return;
         setReport(data);
-        setError(null);
       })
       .catch((err) => {
+        if (cancelled) return;
+
         console.error('Failed to load forensic report:', err);
-        setError(err.response?.data?.detail || 'Report could not be retrieved.');
+
+        setReport(null);
+        setError(
+          err?.response?.data?.detail ||
+            'Report could not be retrieved.'
+        );
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [analysisId]);
+
+  const effectiveId = analysisId || resolveCurrentId();
+
+  const reportMeta = useMemo(() => {
+    const totalStreams = Number(report?.session?.total_streams ?? 0);
+
+    const detectedProtocol = normalizeProtocol(
+      report?.protocol_summary?.detected_protocol
+    );
+
+    /*
+     * MailRakhwala's cryptographic assessment is applicable only
+     * when the capture actually contains identifiable email traffic.
+     *
+     * A TCP stream by itself is NOT evidence of an email session.
+     */
+    const hasEmailSignals =
+      totalStreams > 0 &&
+      EMAIL_PROTOCOLS.has(detectedProtocol);
+
+    const findings = Array.isArray(report?.compliance_findings)
+      ? report.compliance_findings
+      : [];
+
+    const rawScore = report?.posture_report?.posture_score;
+
+    const validScore =
+      isFiniteNumber(rawScore) &&
+      rawScore >= 0 &&
+      rawScore <= 100;
+
+    const postureScore =
+      hasEmailSignals && validScore
+        ? rawScore
+        : null;
+
+    const riskClass =
+      hasEmailSignals
+        ? (
+            report?.risk_classification?.predicted_risk_class ||
+            report?.risk_classification?.risk_class ||
+            null
+          )
+        : null;
+
+    const anomaly =
+      hasEmailSignals &&
+      typeof report?.anomaly_detection?.is_anomaly === 'boolean'
+        ? report.anomaly_detection.is_anomaly
+        : null;
+
+    /*
+     * For an out-of-scope capture, the report must not present
+     * compliance findings as an assessed email-security result.
+     */
+    const assessedFindings = hasEmailSignals
+      ? findings
+      : [];
+
+    return {
+      totalStreams,
+      detectedProtocol,
+      hasEmailSignals,
+      postureScore,
+      riskClass,
+      anomaly,
+      findings: assessedFindings,
+      rawFindingCount: findings.length,
+    };
+  }, [report]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400 gap-2">
-        <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
-        <span>Compiling forensic audit package...</span>
+      <div className="min-h-screen bg-white flex items-center justify-center p-8">
+        <div className="flex items-center gap-3 text-slate-500">
+          <RefreshCw className="w-5 h-5 animate-spin text-violet-600" />
+          <span className="text-sm font-medium">
+            Compiling forensic audit package...
+          </span>
+        </div>
       </div>
     );
   }
 
-  const effectiveId = analysisId || resolveCurrentId();
-
   if (!effectiveId) {
     return (
-      <div className="p-8 border border-gray-800 rounded-xl bg-gray-900/40 text-center space-y-3">
-        <ShieldAlert className="w-10 h-10 text-amber-400 mx-auto" />
-        <h3 className="text-lg font-bold text-white">No Forensic Report Generated</h3>
-        <p className="text-sm text-gray-400 max-w-md mx-auto">
-          Please upload and analyze a PCAP file in Capture Ingestion to generate executive and forensic security reports.
-        </p>
+      <div className="min-h-screen bg-white flex items-center justify-center p-8">
+        <div className="w-full max-w-lg rounded-3xl border border-violet-100 bg-white p-10 text-center shadow-xl shadow-violet-100/40">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+
+          <h3 className="mt-5 text-xl font-black text-slate-900">
+            No Forensic Report Generated
+          </h3>
+
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
+            Please upload and analyze a PCAP file in Capture Ingestion
+            to generate an executive and forensic security report.
+          </p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8 border border-red-900/40 rounded-xl bg-red-950/20 text-center space-y-3">
-        <ShieldAlert className="w-10 h-10 text-red-400 mx-auto" />
-        <h3 className="text-lg font-bold text-white">Audit Report Unavailable</h3>
-        <p className="text-sm text-gray-400 max-w-md mx-auto">{error}</p>
+      <div className="min-h-screen bg-white flex items-center justify-center p-8">
+        <div className="w-full max-w-lg rounded-3xl border border-red-100 bg-white p-10 text-center shadow-xl shadow-red-100/30">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+
+          <h3 className="mt-5 text-xl font-black text-slate-900">
+            Audit Report Unavailable
+          </h3>
+
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
+            {error}
+          </p>
+        </div>
       </div>
     );
   }
 
+  const {
+    totalStreams,
+    detectedProtocol,
+    hasEmailSignals,
+    postureScore,
+    riskClass,
+    anomaly,
+    findings,
+  } = reportMeta;
+
   const handleDownloadJSON = () => {
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const blob = new Blob(
+      [JSON.stringify(report, null, 2)],
+      { type: 'application/json' }
+    );
+
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mailrakhwala_audit_${effectiveId}.json`;
-    a.click();
+    const anchor = document.createElement('a');
+
+    anchor.href = url;
+    anchor.download = `mailrakhwala_audit_${effectiveId}.json`;
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
     URL.revokeObjectURL(url);
   };
 
+  const scoreLabel =
+    postureScore === null
+      ? 'Not Assessed'
+      : `${postureScore} / 100`;
+
+  const protocolLabel =
+    detectedProtocol &&
+    detectedProtocol !== 'UNKNOWN' &&
+    detectedProtocol !== 'NONE'
+      ? detectedProtocol
+      : 'No email protocol detected';
+
+  const assessmentDescription = hasEmailSignals
+    ? 'Email traffic was identified and the cryptographic security pipeline was applicable to this capture.'
+    : 'No identifiable SMTP, SMTPS, IMAP, IMAPS, POP3, or POP3S traffic was detected. Cryptographic email security was therefore not assessed.';
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Forensic Reports</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            Audit exports and machine-readable evidence packages for session{' '}
-            <span className="font-mono text-emerald-400">{effectiveId}</span>
-          </p>
+    <div className="min-h-screen bg-white text-slate-900">
+      <div className="relative overflow-hidden">
+        {/* Atmospheric background */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-32 right-0 h-96 w-96 rounded-full bg-violet-100/50 blur-3xl" />
+          <div className="absolute top-80 -left-32 h-80 w-80 rounded-full bg-purple-100/40 blur-3xl" />
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleDownloadJSON}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium rounded-lg inline-flex items-center gap-2 cursor-pointer transition-colors"
+
+        <div className="relative mx-auto max-w-7xl px-6 py-8 lg:px-10">
+          {/* Header */}
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-violet-700">
+                <FileText className="h-3.5 w-3.5" />
+                Forensic Report
+              </div>
+
+              <h1 className="text-3xl font-black tracking-tight text-slate-950">
+                Forensic Reports
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                Audit exports and machine-readable evidence packages for
+                this analysis session.
+              </p>
+
+              <p className="mt-2 font-mono text-xs text-violet-600">
+                Session: {effectiveId}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleDownloadJSON}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50"
+              >
+                <Download className="h-4 w-4" />
+                Export JSON
+              </button>
+
+              <a
+                href={exportReportPDFUrl(effectiveId)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
+              >
+                <FileText className="h-4 w-4" />
+                Download PDF Report
+              </a>
+            </div>
+          </div>
+
+          {/* Assessment state */}
+          <div
+            className={`mt-8 overflow-hidden rounded-3xl border ${
+              hasEmailSignals
+                ? 'border-emerald-100 bg-emerald-50/50'
+                : 'border-violet-100 bg-violet-50/50'
+            }`}
           >
-            <Download className="w-4 h-4" />
-            Export JSON
-          </button>
-          <a
-            href={exportReportPDFUrl(effectiveId)}
-            target="_blank"
-            rel="noreferrer"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
-          >
-            <FileText className="w-4 h-4" />
-            Download PDF Report
-          </a>
+            <div className="p-6 lg:p-7">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex gap-4">
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                      hasEmailSignals
+                        ? 'bg-emerald-100 text-emerald-600'
+                        : 'bg-violet-100 text-violet-600'
+                    }`}
+                  >
+                    {hasEmailSignals ? (
+                      <ShieldCheck className="h-6 w-6" />
+                    ) : (
+                      <ShieldAlert className="h-6 w-6" />
+                    )}
+                  </div>
+
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900">
+                      {hasEmailSignals
+                        ? 'Email Security Assessment'
+                        : 'Email Security Not Assessed'}
+                    </h2>
+
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                      {assessmentDescription}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-black uppercase tracking-wider ${
+                    hasEmailSignals
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-violet-100 text-violet-700'
+                  }`}
+                >
+                  {hasEmailSignals ? 'ASSESSED' : 'NOT ASSESSED'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Executive Summary */}
+          <section className="mt-8">
+            <div className="mb-4">
+              <h2 className="text-lg font-black text-slate-900">
+                Executive Summary
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Evidence-backed summary of the captured session.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* Filename */}
+              <SummaryCard
+                icon={<FileText className="h-5 w-5" />}
+                label="Target Filename"
+                value={report?.session?.filename || 'N/A'}
+              />
+
+              {/* Status */}
+              <SummaryCard
+                icon={<ShieldCheck className="h-5 w-5" />}
+                label="Analysis Status"
+                value={report?.session?.status || 'UNKNOWN'}
+                valueClass="text-emerald-600"
+              />
+
+              {/* Streams */}
+              <SummaryCard
+                icon={<Network className="h-5 w-5" />}
+                label="Reassembled Streams"
+                value={String(totalStreams)}
+              />
+
+              {/* Protocol */}
+              <SummaryCard
+                icon={<Mail className="h-5 w-5" />}
+                label="Detected Email Protocol"
+                value={protocolLabel}
+                valueClass={
+                  hasEmailSignals
+                    ? 'text-violet-700'
+                    : 'text-slate-500'
+                }
+              />
+
+              {/* Score */}
+              <SummaryCard
+                icon={<ShieldCheck className="h-5 w-5" />}
+                label="Cryptographic Posture Score"
+                value={scoreLabel}
+                valueClass={
+                  postureScore === null
+                    ? 'text-slate-500'
+                    : 'text-emerald-600'
+                }
+              />
+
+              {/* Risk */}
+              <SummaryCard
+                icon={<AlertTriangle className="h-5 w-5" />}
+                label="Risk Classification"
+                value={riskClass || 'Not Assessed'}
+                valueClass={
+                  riskClass
+                    ? 'text-slate-900'
+                    : 'text-slate-500'
+                }
+              />
+            </div>
+          </section>
+
+          {/* Technical scope */}
+          <section className="mt-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <InfoCard
+                icon={<LockKeyhole className="h-5 w-5" />}
+                title="TLS Evidence"
+                value={
+                  hasEmailSignals
+                    ? (
+                        report?.protocol_summary?.has_tls
+                          ? 'TLS evidence present'
+                          : 'No TLS evidence observed'
+                      )
+                    : 'Not Assessed'
+                }
+              />
+
+              <InfoCard
+                icon={<ShieldCheck className="h-5 w-5" />}
+                title="Verified Findings"
+                value={
+                  hasEmailSignals
+                    ? String(findings.length)
+                    : '0 — Not Assessed'
+                }
+              />
+
+              <InfoCard
+                icon={<AlertTriangle className="h-5 w-5" />}
+                title="Anomaly Detection"
+                value={
+                  anomaly === null
+                    ? 'Not Assessed'
+                    : anomaly
+                      ? 'Anomaly detected'
+                      : 'No anomaly detected'
+                }
+              />
+            </div>
+          </section>
+
+          {/* No email signals explanation */}
+          {!hasEmailSignals && (
+            <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6 lg:p-7">
+              <div className="flex gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-600 shadow-sm">
+                  <Network className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    No Email or TLS Signals Detected
+                  </h3>
+
+                  <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+                    This capture contains network traffic, but the available
+                    evidence does not identify an SMTP, SMTPS, IMAP, IMAPS,
+                    POP3, or POP3S session. A TCP stream count alone does not
+                    establish an email-security assessment.
+                  </p>
+
+                  <p className="mt-3 text-xs font-semibold text-slate-500">
+                    Posture score, cryptographic findings, ML risk
+                    classification, and anomaly assessment are therefore
+                    shown as <span className="font-black text-violet-700">
+                      Not Assessed
+                    </span> rather than being inferred from unrelated traffic.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Methodology */}
+          <section className="mt-8 rounded-3xl border border-violet-100 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-black uppercase tracking-wider text-violet-700">
+              Assessment Basis
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              MailRakhwala reports cryptographic security results only when
+              applicable email traffic is identified in the captured
+              evidence. Unavailable or non-applicable measurements are not
+              converted into security scores or findings.
+            </p>
+
+            {report?.methodology_disclaimer && (
+              <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-400">
+                {report.methodology_disclaimer}
+              </p>
+            )}
+          </section>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="border border-gray-800 bg-gray-900/40 rounded-xl p-6 space-y-4">
-        <h3 className="text-base font-semibold text-white">Executive Summary</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-          <div className="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <span className="text-gray-400 block mb-1">Target Filename</span>
-            <span className="text-white text-sm">{report?.session?.filename || 'N/A'}</span>
-          </div>
-          <div className="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <span className="text-gray-400 block mb-1">Analysis Status</span>
-            <span className="text-emerald-400 text-sm font-bold uppercase">{report?.session?.status || 'COMPLETED'}</span>
-          </div>
-          <div className="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <span className="text-gray-400 block mb-1">Reassembled Streams</span>
-            <span className="text-white text-sm">{report?.session?.total_streams ?? 0}</span>
-          </div>
-          <div className="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <span className="text-gray-400 block mb-1">Identified Posture Score</span>
-            <span className="text-emerald-400 text-sm font-bold">
-              {report?.posture_report?.posture_score ?? 100} / 100
-            </span>
-          </div>
+function SummaryCard({
+  icon,
+  label,
+  value,
+  valueClass = 'text-slate-900',
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-violet-200 hover:shadow-md">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+          {icon}
+        </div>
+
+        <div className="min-w-0">
+          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+            {label}
+          </span>
+
+          <span
+            className={`mt-1 block break-words text-sm font-black ${valueClass}`}
+          >
+            {value}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({
+  icon,
+  title,
+  value,
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-violet-600">
+          {icon}
+        </div>
+
+        <div>
+          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+            {title}
+          </span>
+
+          <span className="mt-1 block text-sm font-black text-slate-800">
+            {value}
+          </span>
         </div>
       </div>
     </div>
