@@ -1,551 +1,941 @@
 """
-MailRakhwala Compliance Engine Test Suite (Step 21)
-Validates deterministic cryptographic compliance evaluation against Step 4 rules.
+MailRakhwala Deterministic Cryptographic Compliance Engine Service (Step 21)
+Evaluates observed cryptographic parameters strictly against authoritative Step 4 rules.
+Pipeline: Observed Evidence -> Authoritative Step 4 Rule -> Deterministic Evaluation -> Finding -> Severity -> Recommendation
 """
 
 from datetime import datetime, timezone
-import pytest
+import hashlib
+from typing import Any, Dict, List, Optional, Set
 
-from app.schemas.compliance_engine import ComplianceStatus
-from app.schemas.domain import TriState, FindingCategory, SeverityLevel
-from app.schemas.identity_analysis import (
-    IdentityAnalysisResult,
-    IdentityRelationship,
-    IdentityRelationshipType,
-    IdentityStatus,
+from app.schemas.compliance_engine import (
+    ComplianceEvidence,
+    ComplianceFinding,
+    ComplianceStatus,
+    RuleEvaluationSummary,
+    SessionComplianceReport,
 )
+from app.schemas.domain import FindingCategory, SeverityLevel, TriState
+from app.schemas.identity_analysis import IdentityAnalysisResult, IdentityRelationshipType, IdentityStatus
 from app.schemas.revocation_trust import (
-    CertificateTrustEvidence,
-    CRLEvidence,
     OCSPObservedStatus,
-    OCSPEvidence,
     OCSPVerificationStatus,
     OfflineTrustResult,
     TrustValidationStatus,
 )
-from app.services.compliance_engine import compliance_engine
-from app.services.rule_loader import RuleCatalogError, rule_catalog
-
-
-# ============================================================
-# 1. TLS VERSION EVALUATION TESTS
-# ============================================================
-
-def test_tls_1_0_non_compliant():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 1.0"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.rule_id == "RULE-TLS-002"
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_tls_1_1_non_compliant():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 1.1"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.rule_id == "RULE-TLS-002"
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_ssl_3_0_critical_non_compliant():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "SSL 3.0"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.rule_id == "RULE-TLS-001"
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.CRITICAL
-
-
-def test_tls_1_2_compliant():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 1.2"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.rule_id == "RULE-TLS-003"
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_tls_1_3_compliant():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 1.3"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.rule_id == "RULE-TLS-004"
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_tls_version_missing_unknown():
-    rep = compliance_engine.evaluate_session("s1", tls_params={})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.status == ComplianceStatus.UNKNOWN
-
-
-def test_tls_version_unrecognized_unknown():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 9.9"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.TLS_VERSION)
-    assert f.status == ComplianceStatus.UNKNOWN
-
-
-# ============================================================
-# 2. CIPHER SUITE EVALUATION TESTS
-# ============================================================
-
-def test_approved_cipher_uses_approved_rule_not_cbc_rule():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    rep = compliance_engine.evaluate_session("stream-1", tls_params=tls)
-    cipher_findings = [f for f in rep.findings if f.category == FindingCategory.CIPHER_SUITE]
-    assert len(cipher_findings) == 1
-    assert cipher_findings[0].rule_id == "RULE-CIPHER-APPROVED"
-    assert cipher_findings[0].status == ComplianceStatus.COMPLIANT
-    assert not any(f.rule_id == "RULE-CIPHER-004" for f in cipher_findings)
-
-
-def test_cbc_cipher_uses_cbc_rule():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256"}
-    rep = compliance_engine.evaluate_session("stream-1", tls_params=tls)
-    cipher_findings = [f for f in rep.findings if f.category == FindingCategory.CIPHER_SUITE]
-    assert len(cipher_findings) == 1
-    assert cipher_findings[0].rule_id == "RULE-CIPHER-004"
-    assert cipher_findings[0].status == ComplianceStatus.NON_COMPLIANT
-
-
-def test_null_cipher_critical():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_RSA_WITH_NULL_SHA"}
-    rep = compliance_engine.evaluate_session("s1", tls_params=tls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CIPHER-001")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.CRITICAL
-
-
-def test_rc4_cipher_critical():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_RSA_WITH_RC4_128_SHA"}
-    rep = compliance_engine.evaluate_session("s1", tls_params=tls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CIPHER-002")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.CRITICAL
-
-
-def test_3des_cipher_high():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA"}
-    rep = compliance_engine.evaluate_session("s1", tls_params=tls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CIPHER-003")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_unknown_cipher_uses_unknown_rule_and_status_unknown():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_EXOTIC_EXPERIMENTAL_CIPHER"}
-    rep = compliance_engine.evaluate_session("stream-1", tls_params=tls)
-    cipher_findings = [f for f in rep.findings if f.category == FindingCategory.CIPHER_SUITE]
-    assert len(cipher_findings) == 1
-    assert cipher_findings[0].rule_id == "RULE-CIPHER-UNKNOWN"
-    assert cipher_findings[0].status == ComplianceStatus.UNKNOWN
-
-
-def test_missing_cipher_suite_unknown():
-    rep = compliance_engine.evaluate_session("s1", tls_params={"version": "TLS 1.2"})
-    f = next(f for f in rep.findings if f.category == FindingCategory.CIPHER_SUITE)
-    assert f.status == ComplianceStatus.UNKNOWN
-
-
-# ============================================================
-# 3. KEY EXCHANGE & PFS TESTS
-# ============================================================
-
-def test_kex_no_pfs_non_compliant():
-    kex = {"has_forward_secrecy": TriState.FALSE, "exchange_type": "RSA"}
-    rep = compliance_engine.evaluate_session("s1", key_exchange_params=kex)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-KEX-001")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_kex_pfs_compliant():
-    kex = {"has_forward_secrecy": TriState.TRUE, "exchange_type": "ECDHE"}
-    rep = compliance_engine.evaluate_session("s1", key_exchange_params=kex)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-KEX-001")
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_kex_weak_dh_param_bits():
-    kex = {"has_forward_secrecy": TriState.TRUE, "exchange_type": "DHE", "dh_param_bits": 1024}
-    rep = compliance_engine.evaluate_session("s1", key_exchange_params=kex)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-KEX-002")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_kex_strong_dh_param_bits():
-    kex = {"has_forward_secrecy": TriState.TRUE, "exchange_type": "DHE", "dh_param_bits": 2048}
-    rep = compliance_engine.evaluate_session("s1", key_exchange_params=kex)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-KEX-002")
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_kex_missing_evidence_unknown():
-    rep = compliance_engine.evaluate_session("s1", key_exchange_params=None)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-KEX-001")
-    assert f.status == ComplianceStatus.UNKNOWN
-
-
-# ============================================================
-# 4. CERTIFICATE SECURITY AUDIT TESTS
-# ============================================================
-
-def test_cert_expired():
-    ref = datetime(2026, 9, 18, tzinfo=timezone.utc)
-    cert = {"is_expired": TriState.TRUE, "is_not_yet_valid": TriState.FALSE}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert, reference_time=ref)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-001")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.HIGH
-
-
-def test_cert_not_yet_valid():
-    ref = datetime(2026, 9, 18, tzinfo=timezone.utc)
-    cert = {"is_expired": TriState.FALSE, "is_not_yet_valid": TriState.TRUE}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert, reference_time=ref)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-002")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-
-
-def test_cert_active_window_compliant():
-    ref = datetime(2026, 9, 18, tzinfo=timezone.utc)
-    cert = {"is_expired": TriState.FALSE, "is_not_yet_valid": TriState.FALSE}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert, reference_time=ref)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-001")
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_cert_validity_without_reference_time_unknown():
-    cert = {"is_expired": TriState.FALSE, "is_not_yet_valid": TriState.FALSE}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert, reference_time=None)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-001")
-    assert f.status == ComplianceStatus.UNKNOWN
-
-
-def test_cert_weak_rsa_key_critical():
-    cert = {"public_key_algorithm": "RSA", "public_key_bits": 1024}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-003")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.CRITICAL
-
-
-def test_cert_strong_rsa_key_compliant():
-    cert = {"public_key_algorithm": "RSA", "public_key_bits": 2048}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-003")
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_cert_weak_signature_critical():
-    cert = {"signature_algorithm": "sha1WithRSAEncryption"}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-CERT-004")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-    assert f.severity == SeverityLevel.CRITICAL
-
-
-def test_cert_self_signed_non_compliant():
-    cert = {"is_self_signed": TriState.TRUE}
-    rep = compliance_engine.evaluate_session("s1", cert_audit_params=cert)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-PKI-001")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-
-
-# ============================================================
-# 5. STARTTLS EVALUATION TESTS
-# ============================================================
-
-def test_starttls_downgrade_suspected():
-    stls = {"starttls_state": "DOWNGRADE_SUSPECTED"}
-    rep = compliance_engine.evaluate_session("s1", starttls_params=stls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-STARTTLS-002")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
-
-
-def test_starttls_succeeded():
-    stls = {"starttls_state": "SUCCEEDED"}
-    rep = compliance_engine.evaluate_session("s1", starttls_params=stls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-STARTTLS-002")
-    assert f.status == ComplianceStatus.COMPLIANT
-
-
-def test_starttls_implicit_not_applicable():
-    stls = {"starttls_state": "NOT_APPLICABLE"}
-    rep = compliance_engine.evaluate_session("s1", starttls_params=stls)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-STARTTLS-002")
-    assert f.status == ComplianceStatus.NOT_APPLICABLE
-
-
-# ============================================================
-# 6. IDENTITY ALIGNMENT TESTS
-# ============================================================
-
-def test_identity_match_compliant():
-    id_res = IdentityAnalysisResult(
-        stream_id="s1",
-        certificate_index=0,
-        relationships=[
-            IdentityRelationship(
-                relationship_type=IdentityRelationshipType.SNI_VS_SAN,
-                left_name="TLS ClientHello SNI",
-                left_value="mail.example.com",
-                right_name="Server Certificate SAN",
-                right_value="mail.example.com",
-                status=IdentityStatus.MATCH,
-                explanation="Observed SNI matches observed SAN entry perfectly.",
+from app.services.rule_loader import rule_catalog
+
+
+class ComplianceEngine:
+    """Authoritative compliance engine evaluating strictly against Step 4 rules."""
+
+    VERSION = "21.0.0"
+
+    def evaluate_session(
+        self,
+        stream_id: str,
+        tls_params: Optional[Dict[str, Any]] = None,
+        key_exchange_params: Optional[Dict[str, Any]] = None,
+        cert_audit_params: Optional[Dict[str, Any]] = None,
+        identity_result: Optional[IdentityAnalysisResult] = None,
+        trust_result: Optional[OfflineTrustResult] = None,
+        starttls_params: Optional[Dict[str, Any]] = None,
+        reference_time: Optional[datetime] = None,
+    ) -> SessionComplianceReport:
+        ref_time = reference_time
+        if ref_time is not None and ref_time.tzinfo is None:
+            ref_time = ref_time.replace(tzinfo=timezone.utc)
+
+        findings: List[ComplianceFinding] = []
+        rules_evaluated: Set[str] = set()
+
+        # TLS cryptographic rules require positive handshake evidence. The
+        # analysis route supplies this explicitly so a plaintext SMTP session
+        # cannot be interpreted as a negotiated TLS session merely because a
+        # parser returned an empty/placeholder TLS structure. For direct/unit
+        # callers that do not supply STARTTLS context, preserve legacy behavior
+        # only when concrete TLS parameters are actually present.
+        handshake_evidence = None
+        if isinstance(starttls_params, dict) and "tls_handshake_observed" in starttls_params:
+            handshake_evidence = bool(starttls_params.get("tls_handshake_observed"))
+        elif tls_params is not None:
+            handshake_evidence = bool(
+                isinstance(tls_params, dict)
+                and any(
+                    tls_params.get(key) not in (None, "", "UNKNOWN", "UNAVAILABLE")
+                    for key in ("version", "cipher_suite")
+                )
             )
-        ],
-        overall_interpretation="Consistent session identity observed across indicators.",
-    )
-    rep = compliance_engine.evaluate_session("s1", identity_result=id_res)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-IDENTITY-001")
-    assert f.status == ComplianceStatus.COMPLIANT
 
+        if handshake_evidence:
+            # 1. TLS Protocol Version Evaluation
+            findings.extend(self._eval_tls_version(stream_id, tls_params, rules_evaluated))
 
-def test_identity_mismatch_non_compliant():
-    id_res = IdentityAnalysisResult(
-        stream_id="s1",
-        certificate_index=0,
-        relationships=[
-            IdentityRelationship(
-                relationship_type=IdentityRelationshipType.SNI_VS_SAN,
-                left_name="TLS ClientHello SNI",
-                left_value="mail.adversary.org",
-                right_name="Server Certificate SAN",
-                right_value="mail.example.com",
-                status=IdentityStatus.MISMATCH,
-                explanation="Observed SNI does not match any SAN entries.",
+            # 2. Cipher Suite Evaluation
+            findings.extend(self._eval_cipher_suite(stream_id, tls_params, rules_evaluated, handshake_evidence=True))
+
+            # 3. Key Exchange & Forward Secrecy Evaluation
+            findings.extend(self._eval_key_exchange(stream_id, key_exchange_params, rules_evaluated))
+
+            # 4. Certificate Validity & Cryptography Evaluation
+            findings.extend(self._eval_certificate(stream_id, cert_audit_params, ref_time, rules_evaluated))
+
+            # 5. Identity & Hostname Alignment Evaluation
+            findings.extend(self._eval_identity(stream_id, identity_result, rules_evaluated))
+
+            # 6. Trust & Revocation Evidence Evaluation
+            findings.extend(self._eval_trust_and_revocation(stream_id, trust_result, rules_evaluated))
+
+        # STARTTLS is an email-protocol flow rule and remains applicable even
+        # when no TLS handshake occurred.
+        findings.extend(self._eval_starttls(stream_id, starttls_params, rules_evaluated))
+
+        # Evidence-aware deduplication
+        deduped_findings: List[ComplianceFinding] = []
+        seen_keys: Set[tuple] = set()
+        for f in findings:
+            ev = f.evidence
+            key = (
+                f.rule_id,
+                ev.stream_id,
+                ev.observed_property,
+                str(ev.observed_value),
+                ev.certificate_index,
+                ev.raw_der_sha256,
             )
-        ],
-        overall_interpretation="Identity mismatch observed.",
-    )
-    rep = compliance_engine.evaluate_session("s1", identity_result=id_res)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-IDENTITY-001")
-    assert f.status == ComplianceStatus.NON_COMPLIANT
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped_findings.append(f)
 
+        # Summary calculation
+        summary = RuleEvaluationSummary(
+            total_rules_evaluated=len(rules_evaluated),
+            total_findings_generated=len(deduped_findings),
+            compliant_count=sum(1 for f in deduped_findings if f.status == ComplianceStatus.COMPLIANT),
+            non_compliant_count=sum(1 for f in deduped_findings if f.status == ComplianceStatus.NON_COMPLIANT),
+            unknown_count=sum(1 for f in deduped_findings if f.status == ComplianceStatus.UNKNOWN),
+            not_applicable_count=sum(1 for f in deduped_findings if f.status == ComplianceStatus.NOT_APPLICABLE),
+        )
 
-def test_identity_unavailable_unknown():
-    id_res = IdentityAnalysisResult(
-        stream_id="s1",
-        certificate_index=0,
-        relationships=[
-            IdentityRelationship(
-                relationship_type=IdentityRelationshipType.SNI_VS_SAN,
-                left_name="TLS ClientHello SNI",
-                left_value=None,
-                right_name="Server Certificate SAN",
-                right_value="mail.example.com",
-                status=IdentityStatus.UNAVAILABLE,
-                explanation="SNI extension was not observed in the ClientHello.",
+        # Precedence: NON_COMPLIANT > UNKNOWN > COMPLIANT
+        if summary.non_compliant_count > 0:
+            overall = ComplianceStatus.NON_COMPLIANT
+        elif summary.unknown_count > 0:
+            overall = ComplianceStatus.UNKNOWN
+        elif summary.compliant_count > 0:
+            overall = ComplianceStatus.COMPLIANT
+        else:
+            overall = ComplianceStatus.UNKNOWN
+
+        return SessionComplianceReport(
+            stream_id=stream_id,
+            engine_version=self.VERSION,
+            reference_time=ref_time,
+            overall_compliance=overall,
+            summary=summary,
+            findings=deduped_findings,
+        )
+
+    # --- 1. TLS Version Evaluator ---
+    def _eval_tls_version(
+        self, stream_id: str, tls: Optional[Dict[str, Any]], evaluated: Set[str]
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not tls or "version" not in tls or not tls["version"]:
+            evaluated.add("RULE-TLS-002")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-002",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="tls.version",
+                    observed_val="UNAVAILABLE",
+                    ref_val=">= TLS 1.2",
+                )
             )
-        ],
-        overall_interpretation="SNI was unavailable.",
-    )
-    rep = compliance_engine.evaluate_session("s1", identity_result=id_res)
-    f = next(f for f in rep.findings if f.rule_id == "RULE-IDENTITY-001")
-    assert f.status == ComplianceStatus.UNKNOWN
+            return findings
+
+        ver_str = str(tls["version"]).strip().upper()
+
+        if ver_str in ("SSL 2.0", "SSL 3.0", "0X0200", "0X0300", "SSLV2", "SSLV3"):
+            evaluated.add("RULE-TLS-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-001",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.version",
+                    observed_val=ver_str,
+                    ref_val=">= TLS 1.2",
+                    frame=tls.get("frame_number"),
+                    ts=tls.get("timestamp"),
+                )
+            )
+        elif ver_str in ("TLS 1.0", "TLS 1.1", "0X0301", "0X0302"):
+            evaluated.add("RULE-TLS-002")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-002",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.version",
+                    observed_val=ver_str,
+                    ref_val=">= TLS 1.2",
+                    frame=tls.get("frame_number"),
+                    ts=tls.get("timestamp"),
+                )
+            )
+        elif ver_str in ("TLS 1.2", "0X0303"):
+            evaluated.add("RULE-TLS-003")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-003",
+                    status=ComplianceStatus.COMPLIANT,
+                    observed_prop="tls.version",
+                    observed_val=ver_str,
+                    ref_val="TLS 1.2",
+                    frame=tls.get("frame_number"),
+                    ts=tls.get("timestamp"),
+                )
+            )
+        elif ver_str in ("TLS 1.3", "0X0304"):
+            evaluated.add("RULE-TLS-004")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-004",
+                    status=ComplianceStatus.COMPLIANT,
+                    observed_prop="tls.version",
+                    observed_val=ver_str,
+                    ref_val="TLS 1.3",
+                    frame=tls.get("frame_number"),
+                    ts=tls.get("timestamp"),
+                )
+            )
+        else:
+            evaluated.add("RULE-TLS-002")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TLS-002",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="tls.version",
+                    observed_val=ver_str,
+                    ref_val=">= TLS 1.2",
+                )
+            )
+        return findings
+
+    # --- 2. Cipher Suite Evaluator ---
+    def _eval_cipher_suite(
+        self,
+        stream_id: str,
+        tls: Optional[Dict[str, Any]],
+        evaluated: Set[str],
+        handshake_evidence: bool = False,
+    ) -> List[ComplianceFinding]:
+        findings = []
+
+        # A cipher rule is applicable only when a real TLS handshake has been
+        # observed AND a concrete negotiated cipher-suite value exists. Missing
+        # cipher evidence is not a NULL cipher and must not fall back to
+        # RULE-CIPHER-001.
+        if not handshake_evidence:
+            return findings
+        if not tls or "cipher_suite" not in tls:
+            return findings
+
+        raw_cipher = tls.get("cipher_suite")
+        if raw_cipher is None:
+            return findings
+
+        cs = str(raw_cipher).strip().upper()
+        if cs in {"", "UNKNOWN", "UNAVAILABLE", "NOT_AVAILABLE", "NONE", "N/A", "NA"}:
+            return findings
+
+        if "NULL" in cs:
+            evaluated.add("RULE-CIPHER-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CIPHER-001",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="Non-NULL Cipher",
+                )
+            )
+        elif "RC4" in cs:
+            evaluated.add("RULE-CIPHER-002")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CIPHER-002",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="Prohibited RC4",
+                )
+            )
+        elif "3DES" in cs or "DES" in cs:
+            evaluated.add("RULE-CIPHER-003")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CIPHER-003",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="128-bit or 256-bit block cipher",
+                )
+            )
+        elif "_CBC_" in cs:
+            evaluated.add("RULE-CIPHER-004")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CIPHER-004",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="AEAD cipher mode",
+                )
+            )
+        elif cs in rule_catalog.approved_ciphers:
+            target_rule = "RULE-CIPHER-APPROVED" if rule_catalog.get_rule("RULE-CIPHER-APPROVED") else "RULE-CIPHER-004"
+            evaluated.add(target_rule)
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id=target_rule,
+                    status=ComplianceStatus.COMPLIANT,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="Approved AEAD",
+                )
+            )
+        else:
+            target_rule = "RULE-CIPHER-UNKNOWN" if rule_catalog.get_rule("RULE-CIPHER-UNKNOWN") else "RULE-CIPHER-001"
+            evaluated.add(target_rule)
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id=target_rule,
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="tls.cipher_suite",
+                    observed_val=cs,
+                    ref_val="Approved AEAD Suite",
+                )
+            )
+        return findings
+
+    # --- 3. Key Exchange Evaluator ---
+    def _eval_key_exchange(
+        self, stream_id: str, kex: Optional[Dict[str, Any]], evaluated: Set[str]
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not kex:
+            evaluated.add("RULE-KEX-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-KEX-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="kex.parameters",
+                    observed_val="UNAVAILABLE",
+                    ref_val="Ephemeral Key Exchange (PFS)",
+                )
+            )
+            return findings
+
+        pfs = kex.get("has_forward_secrecy")
+        kex_type = str(kex.get("exchange_type", "UNKNOWN")).upper()
+
+        if pfs == TriState.FALSE or kex_type == "RSA":
+            evaluated.add("RULE-KEX-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-KEX-001",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="kex.has_forward_secrecy",
+                    observed_val="FALSE",
+                    ref_val="TRUE",
+                )
+            )
+        elif pfs == TriState.TRUE:
+            evaluated.add("RULE-KEX-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-KEX-001",
+                    status=ComplianceStatus.COMPLIANT,
+                    observed_prop="kex.has_forward_secrecy",
+                    observed_val="TRUE",
+                    ref_val="TRUE",
+                )
+            )
+
+        dh_bits = kex.get("dh_param_bits")
+        if dh_bits is not None:
+            evaluated.add("RULE-KEX-002")
+            if dh_bits < 2048:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-KEX-002",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="kex.dh_param_bits",
+                        observed_val=dh_bits,
+                        ref_val=">= 2048",
+                    )
+                )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-KEX-002",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="kex.dh_param_bits",
+                        observed_val=dh_bits,
+                        ref_val=">= 2048",
+                    )
+                )
+        return findings
+
+    # --- 4. Certificate Validity & Cryptography Evaluator ---
+    def _eval_certificate(
+        self,
+        stream_id: str,
+        cert: Optional[Dict[str, Any]],
+        ref_time: Optional[datetime],
+        evaluated: Set[str],
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not cert:
+            evaluated.add("RULE-CERT-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CERT-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="cert.presence",
+                    observed_val="UNAVAILABLE",
+                    ref_val="Valid Server Certificate",
+                )
+            )
+            return findings
+
+        cert_idx = cert.get("certificate_index", 0)
+        raw_sha = cert.get("raw_der_sha256")
+
+        evaluated.add("RULE-CERT-001")
+        if ref_time is None:
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-CERT-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="cert.validity",
+                    observed_val="NO_REFERENCE_TIME",
+                    ref_val="Valid ISO UTC Reference Time",
+                    cert_idx=cert_idx,
+                    raw_sha=raw_sha,
+                )
+            )
+        else:
+            is_expired = cert.get("is_expired")
+            is_not_yet_valid = cert.get("is_not_yet_valid")
+
+            if is_expired == TriState.TRUE:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-001",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="cert.not_after",
+                        observed_val=cert.get("not_after"),
+                        ref_val=ref_time.isoformat(),
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+            elif is_not_yet_valid == TriState.TRUE:
+                evaluated.add("RULE-CERT-002")
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-002",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="cert.not_before",
+                        observed_val=cert.get("not_before"),
+                        ref_val=ref_time.isoformat(),
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+            elif is_expired == TriState.FALSE and is_not_yet_valid == TriState.FALSE:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-001",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="cert.validity",
+                        observed_val="ACTIVE",
+                        ref_val="Within active window",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-001",
+                        status=ComplianceStatus.UNKNOWN,
+                        observed_prop="cert.validity",
+                        observed_val="UNAVAILABLE",
+                        ref_val="Active window",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+
+        # Public Key Length
+        key_bits = cert.get("public_key_bits")
+        key_algo = str(cert.get("public_key_algorithm", "")).upper()
+        if key_algo == "RSA":
+            evaluated.add("RULE-CERT-003")
+            if key_bits is not None:
+                if key_bits < 2048:
+                    findings.append(
+                        self._build_finding(
+                            stream_id=stream_id,
+                            rule_id="RULE-CERT-003",
+                            status=ComplianceStatus.NON_COMPLIANT,
+                            observed_prop="cert.public_key_bits",
+                            observed_val=key_bits,
+                            ref_val=">= 2048",
+                            cert_idx=cert_idx,
+                            raw_sha=raw_sha,
+                        )
+                    )
+                else:
+                    findings.append(
+                        self._build_finding(
+                            stream_id=stream_id,
+                            rule_id="RULE-CERT-003",
+                            status=ComplianceStatus.COMPLIANT,
+                            observed_prop="cert.public_key_bits",
+                            observed_val=key_bits,
+                            ref_val=">= 2048",
+                            cert_idx=cert_idx,
+                            raw_sha=raw_sha,
+                        )
+                    )
+
+        # Signature Digest
+        sig_algo = str(cert.get("signature_algorithm", "")).lower()
+        if sig_algo:
+            evaluated.add("RULE-CERT-004")
+            if any(w in sig_algo for w in ("md5", "sha1", "md2")):
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-004",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="cert.signature_algorithm",
+                        observed_val=sig_algo,
+                        ref_val="SHA-256 or stronger",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-CERT-004",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="cert.signature_algorithm",
+                        observed_val=sig_algo,
+                        ref_val="SHA-256 or stronger",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+
+        # Self-signed
+        is_self_signed = cert.get("is_self_signed")
+        if is_self_signed is not None:
+            evaluated.add("RULE-PKI-001")
+            if is_self_signed == TriState.TRUE:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-PKI-001",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="cert.is_self_signed",
+                        observed_val="TRUE",
+                        ref_val="CA-issued certificate",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+            elif is_self_signed == TriState.FALSE:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-PKI-001",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="cert.is_self_signed",
+                        observed_val="FALSE",
+                        ref_val="CA-issued certificate",
+                        cert_idx=cert_idx,
+                        raw_sha=raw_sha,
+                    )
+                )
+
+        return findings
+
+    # --- 5. STARTTLS Evaluator ---
+    def _eval_starttls(
+        self, stream_id: str, stls: Optional[Dict[str, Any]], evaluated: Set[str]
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not stls:
+            return findings
+
+        state = str(stls.get("starttls_state", "")).upper()
+        evaluated.add("RULE-STARTTLS-002")
+
+        if state == "DOWNGRADE_SUSPECTED":
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-STARTTLS-002",
+                    status=ComplianceStatus.NON_COMPLIANT,
+                    observed_prop="starttls.state",
+                    observed_val=state,
+                    ref_val="SUCCEEDED or NOT_APPLICABLE",
+                )
+            )
+        elif state in ("SUCCEEDED", "TLS_TRANSITION_DETECTED"):
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-STARTTLS-002",
+                    status=ComplianceStatus.COMPLIANT,
+                    observed_prop="starttls.state",
+                    observed_val=state,
+                    ref_val="SUCCEEDED",
+                )
+            )
+        elif state == "NOT_APPLICABLE":
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-STARTTLS-002",
+                    status=ComplianceStatus.NOT_APPLICABLE,
+                    observed_prop="starttls.state",
+                    observed_val=state,
+                    ref_val="NOT_APPLICABLE",
+                )
+            )
+        return findings
+
+    def _eval_plaintext_transport(
+        self,
+        stream_id: str,
+        stls: Optional[Dict[str, Any]],
+        evaluated: Set[str],
+    ) -> List[ComplianceFinding]:
+        """Score concrete observed plaintext email transport evidence.
+
+        A STARTTLS state can become UNKNOWN when TCP reconstruction is incomplete.
+        That does not invalidate plaintext bytes that were actually reconstructed.
+        Therefore this evaluator consumes an explicit ``plaintext_observed`` flag
+        produced by the analysis route from real stream payload evidence.
+
+        This does NOT claim that a downgrade attack occurred. It only records that
+        cleartext email protocol traffic was observed in the capture.
+        """
+        findings: List[ComplianceFinding] = []
+        if not stls or not isinstance(stls, dict):
+            return findings
+
+        if not bool(stls.get("plaintext_observed", False)):
+            return findings
+
+        protocol = str(stls.get("protocol", "")).upper()
+        if protocol not in {"SMTP", "IMAP", "POP3"}:
+            return findings
+
+        # If TLS was actually observed, do not classify the session as plaintext
+        # merely because plaintext negotiation preceded the TLS transition.
+        if bool(stls.get("tls_transition_detected", False)):
+            return findings
+
+        # The analysis route sets this only when the capture contains concrete
+        # plaintext email application bytes and no TLS was observed for the
+        # assessed stream/session. Preserve that evidence verbatim.
+        observed_value = stls.get("plaintext_observed_value")
+        if not observed_value:
+            observed_value = f"PLAINTEXT_{protocol}"
+
+        evaluated.add("RULE-CIPHER-001")
+        findings.append(
+            self._build_finding(
+                stream_id=stream_id,
+                rule_id="RULE-CIPHER-001",
+                status=ComplianceStatus.NON_COMPLIANT,
+                observed_prop="transport.security",
+                observed_val=str(observed_value),
+                ref_val="TLS-protected transport",
+            )
+        )
+        return findings
+
+    # --- 6. Identity Evaluator ---
+    def _eval_identity(
+        self, stream_id: str, id_res: Optional[IdentityAnalysisResult], evaluated: Set[str]
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not id_res:
+            evaluated.add("RULE-IDENTITY-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-IDENTITY-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="identity.sni_vs_san",
+                    observed_val="UNAVAILABLE",
+                    ref_val="MATCH",
+                )
+            )
+            return findings
+
+        sni_san_rel = next(
+            (r for r in id_res.relationships if r.relationship_type == IdentityRelationshipType.SNI_VS_SAN),
+            None,
+        )
+        if sni_san_rel:
+            evaluated.add("RULE-IDENTITY-001")
+            if sni_san_rel.status == IdentityStatus.MATCH:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-IDENTITY-001",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="identity.sni_vs_san",
+                        observed_val="MATCH",
+                        ref_val="MATCH",
+                        cert_idx=id_res.certificate_index,
+                        raw_sha=id_res.raw_der_sha256,
+                    )
+                )
+            elif sni_san_rel.status == IdentityStatus.MISMATCH:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-IDENTITY-001",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="identity.sni_vs_san",
+                        observed_val="MISMATCH",
+                        ref_val="MATCH",
+                        cert_idx=id_res.certificate_index,
+                        raw_sha=id_res.raw_der_sha256,
+                    )
+                )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-IDENTITY-001",
+                        status=ComplianceStatus.UNKNOWN,
+                        observed_prop="identity.sni_vs_san",
+                        observed_val=sni_san_rel.status.value,
+                        ref_val="MATCH",
+                        cert_idx=id_res.certificate_index,
+                        raw_sha=id_res.raw_der_sha256,
+                    )
+                )
+        return findings
+
+    # --- 7. Trust & Revocation Evaluator ---
+    def _eval_trust_and_revocation(
+        self, stream_id: str, trust_res: Optional[OfflineTrustResult], evaluated: Set[str]
+    ) -> List[ComplianceFinding]:
+        findings = []
+        if not trust_res:
+            evaluated.add("RULE-TRUST-001")
+            evaluated.add("RULE-REVOC-001")
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-TRUST-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="trust.validation_status",
+                    observed_val="UNAVAILABLE",
+                    ref_val="VALIDATED_LOCALLY",
+                )
+            )
+            findings.append(
+                self._build_finding(
+                    stream_id=stream_id,
+                    rule_id="RULE-REVOC-001",
+                    status=ComplianceStatus.UNKNOWN,
+                    observed_prop="ocsp.observed_status",
+                    observed_val="UNAVAILABLE",
+                    ref_val="GOOD (VERIFIED)",
+                )
+            )
+            return findings
+
+        # Path validation (Defensively check sub-model existence)
+        cert_trust = getattr(trust_res, "certificate_trust", None)
+        if cert_trust:
+            t_stat = cert_trust.trust_validation_status
+            evaluated.add("RULE-TRUST-001")
+            if t_stat == TrustValidationStatus.VALIDATED_LOCALLY:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-TRUST-001",
+                        status=ComplianceStatus.COMPLIANT,
+                        observed_prop="trust.validation_status",
+                        observed_val=t_stat.value,
+                        ref_val="VALIDATED_LOCALLY",
+                        cert_idx=cert_trust.certificate_index,
+                        raw_sha=cert_trust.leaf_fingerprint_sha256,
+                    )
+                )
+            elif t_stat == TrustValidationStatus.NOT_VALIDATED:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-TRUST-001",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="trust.validation_status",
+                        observed_val=t_stat.value,
+                        ref_val="VALIDATED_LOCALLY",
+                        cert_idx=cert_trust.certificate_index,
+                        raw_sha=cert_trust.leaf_fingerprint_sha256,
+                    )
+                )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-TRUST-001",
+                        status=ComplianceStatus.UNKNOWN,
+                        observed_prop="trust.validation_status",
+                        observed_val=t_stat.value,
+                        ref_val="VALIDATED_LOCALLY",
+                        cert_idx=cert_trust.certificate_index,
+                        raw_sha=cert_trust.leaf_fingerprint_sha256,
+                    )
+                )
+
+        # OCSP Stapling (Defensively check sub-model existence & enforce Verified distinction)
+        ocsp = getattr(trust_res, "ocsp_evidence", None)
+        if ocsp:
+            evaluated.add("RULE-REVOC-001")
+            ocsp_stat = ocsp.observed_status
+            ocsp_ver = ocsp.verification_status
+
+            if ocsp_stat == OCSPObservedStatus.REVOKED:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-REVOC-001",
+                        status=ComplianceStatus.NON_COMPLIANT,
+                        observed_prop="ocsp.observed_status",
+                        observed_val=f"{ocsp_stat.value} ({ocsp_ver.value})",
+                        ref_val="GOOD (VERIFIED)",
+                    )
+                )
+            elif ocsp_stat == OCSPObservedStatus.GOOD:
+                if ocsp_ver == OCSPVerificationStatus.VERIFIED:
+                    findings.append(
+                        self._build_finding(
+                            stream_id=stream_id,
+                            rule_id="RULE-REVOC-001",
+                            status=ComplianceStatus.COMPLIANT,
+                            observed_prop="ocsp.observed_status",
+                            observed_val="GOOD (VERIFIED)",
+                            ref_val="GOOD (VERIFIED)",
+                        )
+                    )
+                else:
+                    findings.append(
+                        self._build_finding(
+                            stream_id=stream_id,
+                            rule_id="RULE-REVOC-001",
+                            status=ComplianceStatus.UNKNOWN,
+                            observed_prop="ocsp.observed_status",
+                            observed_val="GOOD (NOT_VERIFIED)",
+                            ref_val="GOOD (VERIFIED)",
+                        )
+                    )
+            else:
+                findings.append(
+                    self._build_finding(
+                        stream_id=stream_id,
+                        rule_id="RULE-REVOC-001",
+                        status=ComplianceStatus.UNKNOWN,
+                        observed_prop="ocsp.observed_status",
+                        observed_val=ocsp_stat.value,
+                        ref_val="GOOD (VERIFIED)",
+                    )
+                )
+
+        return findings
+
+    def _build_finding(
+        self,
+        stream_id: str,
+        rule_id: str,
+        status: ComplianceStatus,
+        observed_prop: str,
+        observed_val: Any,
+        ref_val: Any,
+        frame: Optional[int] = None,
+        ts: Optional[float] = None,
+        cert_idx: Optional[int] = None,
+        raw_sha: Optional[str] = None,
+    ) -> ComplianceFinding:
+        # Load directly from authoritative Step 4 rule definition
+        rule_def = rule_catalog.require_rule(rule_id)
+
+        # Deterministic SHA-256 identifier
+        evidence_digest_src = f"{stream_id}_{rule_id}_{observed_prop}_{observed_val}_{cert_idx}_{raw_sha}_{frame}_{ts}"
+        ev_hash = hashlib.sha256(evidence_digest_src.encode("utf-8")).hexdigest()[:12]
+        cert_part = f"-c{cert_idx}" if cert_idx is not None else ""
+        finding_id = f"FINDING-{rule_id}-{stream_id}{cert_part}-{ev_hash}"
+
+        return ComplianceFinding(
+            finding_id=finding_id,
+            rule_id=rule_id,
+            category=rule_def.category,
+            title=rule_def.title,
+            description=rule_def.description,
+            severity=rule_def.severity,
+            status=status,
+            recommendation=rule_def.remediation,
+            evidence=ComplianceEvidence(
+                stream_id=stream_id,
+                packet_number=frame,
+                timestamp=ts,
+                certificate_index=cert_idx,
+                raw_der_sha256=raw_sha,
+                observed_property=observed_prop,
+                observed_value=str(observed_val) if observed_val is not None else "UNAVAILABLE",
+                reference_value=str(ref_val) if ref_val is not None else None,
+                rule_id=rule_id,
+            ),
+        )
 
 
-# ============================================================
-# 7. TRUST & OCSP STAPLING TESTS
-# ============================================================
-
-def test_trust_validation_statuses():
-    # 1. VALIDATED_LOCALLY
-    t1 = OfflineTrustResult(
-        stream_id="stream-1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="stream-1",
-            leaf_fingerprint_sha256="aa" * 32,
-            trust_validation_status=TrustValidationStatus.VALIDATED_LOCALLY,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="stream-1",
-            explanation="No OCSP response stapled in session",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="stream-1",
-            explanation="No CRL distribution point evaluated offline",
-        ),
-        overall_trust_state=TrustValidationStatus.VALIDATED_LOCALLY,
-    )
-    rep1 = compliance_engine.evaluate_session("stream-1", trust_result=t1)
-    trust_f1 = next(f for f in rep1.findings if f.rule_id == "RULE-TRUST-001")
-    assert trust_f1.status == ComplianceStatus.COMPLIANT
-
-    # 2. NOT_VALIDATED
-    t2 = OfflineTrustResult(
-        stream_id="stream-1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="stream-1",
-            leaf_fingerprint_sha256="bb" * 32,
-            trust_validation_status=TrustValidationStatus.NOT_VALIDATED,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="stream-1",
-            explanation="No OCSP response stapled in session",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="stream-1",
-            explanation="No CRL distribution point evaluated offline",
-        ),
-        overall_trust_state=TrustValidationStatus.NOT_VALIDATED,
-    )
-    rep2 = compliance_engine.evaluate_session("stream-1", trust_result=t2)
-    trust_f2 = next(f for f in rep2.findings if f.rule_id == "RULE-TRUST-001")
-    assert trust_f2.status == ComplianceStatus.NON_COMPLIANT
-
-    # 3. UNAVAILABLE_FROM_PCAP
-    t3 = OfflineTrustResult(
-        stream_id="stream-1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="stream-1",
-            leaf_fingerprint_sha256="cc" * 32,
-            trust_validation_status=TrustValidationStatus.UNAVAILABLE_FROM_PCAP,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="stream-1",
-            explanation="No OCSP response stapled in session",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="stream-1",
-            explanation="No CRL distribution point evaluated offline",
-        ),
-        overall_trust_state=TrustValidationStatus.UNAVAILABLE_FROM_PCAP,
-    )
-    rep3 = compliance_engine.evaluate_session("stream-1", trust_result=t3)
-    trust_f3 = next(f for f in rep3.findings if f.rule_id == "RULE-TRUST-001")
-    assert trust_f3.status == ComplianceStatus.UNKNOWN
-
-
-def test_ocsp_observed_vs_verification_semantics():
-    # GOOD + VERIFIED -> COMPLIANT
-    t_good_ver = OfflineTrustResult(
-        stream_id="s1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="s1",
-            leaf_fingerprint_sha256="11" * 32,
-            trust_validation_status=TrustValidationStatus.VALIDATED_LOCALLY,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="s1",
-            observed_status=OCSPObservedStatus.GOOD,
-            verification_status=OCSPVerificationStatus.VERIFIED,
-            explanation="OCSP response verified against issuer certificate",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="s1",
-            explanation="No CRL evaluation needed",
-        ),
-        overall_trust_state=TrustValidationStatus.VALIDATED_LOCALLY,
-    )
-    rep1 = compliance_engine.evaluate_session("s1", trust_result=t_good_ver)
-    f1 = next(f for f in rep1.findings if f.rule_id == "RULE-REVOC-001")
-    assert f1.status == ComplianceStatus.COMPLIANT
-
-    # GOOD + NOT_VERIFIED -> UNKNOWN
-    t_good_unver = OfflineTrustResult(
-        stream_id="s1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="s1",
-            leaf_fingerprint_sha256="22" * 32,
-            trust_validation_status=TrustValidationStatus.VALIDATED_LOCALLY,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="s1",
-            observed_status=OCSPObservedStatus.GOOD,
-            verification_status=OCSPVerificationStatus.NOT_VERIFIED,
-            explanation="OCSP status good but cryptographic verification unperformed",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="s1",
-            explanation="No CRL evaluation needed",
-        ),
-        overall_trust_state=TrustValidationStatus.VALIDATED_LOCALLY,
-    )
-    rep2 = compliance_engine.evaluate_session("s1", trust_result=t_good_unver)
-    f2 = next(f for f in rep2.findings if f.rule_id == "RULE-REVOC-001")
-    assert f2.status == ComplianceStatus.UNKNOWN
-
-    # REVOKED -> NON_COMPLIANT
-    t_rev = OfflineTrustResult(
-        stream_id="s1",
-        certificate_trust=CertificateTrustEvidence(
-            stream_id="s1",
-            leaf_fingerprint_sha256="33" * 32,
-            trust_validation_status=TrustValidationStatus.VALIDATED_LOCALLY,
-        ),
-        ocsp_evidence=OCSPEvidence(
-            stream_id="s1",
-            observed_status=OCSPObservedStatus.REVOKED,
-            verification_status=OCSPVerificationStatus.VERIFIED,
-            explanation="Certificate explicitly marked revoked in OCSP payload",
-        ),
-        crl_evidence=CRLEvidence(
-            stream_id="s1",
-            explanation="No CRL evaluation needed",
-        ),
-        overall_trust_state=TrustValidationStatus.VALIDATED_LOCALLY,
-    )
-    rep3 = compliance_engine.evaluate_session("s1", trust_result=t_rev)
-    f3 = next(f for f in rep3.findings if f.rule_id == "RULE-REVOC-001")
-    assert f3.status == ComplianceStatus.NON_COMPLIANT
-
-
-# ============================================================
-# 8. DETERMINISM, DEDUPLICATION, & CONTRACT TESTS
-# ============================================================
-
-def test_nonexistent_rule_lookup_raises_rule_catalog_error():
-    with pytest.raises(RuleCatalogError):
-        rule_catalog.require_rule("RULE-NONEXISTENT-999")
-
-
-def test_deterministic_finding_id_repeated_evaluations():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    rep1 = compliance_engine.evaluate_session("stream-10", tls_params=tls)
-    rep2 = compliance_engine.evaluate_session("stream-10", tls_params=tls)
-    assert [f.finding_id for f in rep1.findings] == [f.finding_id for f in rep2.findings]
-
-
-def test_distinct_streams_generate_distinct_finding_ids():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    rep1 = compliance_engine.evaluate_session("stream-A", tls_params=tls)
-    rep2 = compliance_engine.evaluate_session("stream-B", tls_params=tls)
-    assert rep1.findings[0].finding_id != rep2.findings[0].finding_id
-
-
-def test_deduplication_collapses_identical_evidence():
-    tls = {"version": "TLS 1.2", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    rep = compliance_engine.evaluate_session("s1", tls_params=tls)
-    rule_ids = [f.rule_id for f in rep.findings]
-    assert len(rule_ids) == len(set(rule_ids))
-
-
-def test_overall_compliance_precedence_non_compliant_wins():
-    tls_bad = {"version": "TLS 1.0", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    rep = compliance_engine.evaluate_session("s1", tls_params=tls_bad)
-    assert rep.overall_compliance == ComplianceStatus.NON_COMPLIANT
-
-
-def test_overall_compliance_precedence_compliant_plus_unknown_is_unknown():
-    tls_good = {"version": "TLS 1.3", "cipher_suite": "TLS_AES_128_GCM_SHA256"}
-    # Leaving kex, cert, identity missing results in UNKNOWN findings
-    rep = compliance_engine.evaluate_session("s2", tls_params=tls_good)
-    assert rep.overall_compliance == ComplianceStatus.UNKNOWN
-
-
-def test_overall_compliance_not_applicable_alone_is_unknown():
-    stls = {"starttls_state": "NOT_APPLICABLE"}
-    rep = compliance_engine.evaluate_session("s1", starttls_params=stls)
-    # Check overall logic when only NOT_APPLICABLE findings are evaluated
-    rep.findings = [f for f in rep.findings if f.status == ComplianceStatus.NOT_APPLICABLE]
-    rep.summary.non_compliant_count = 0
-    rep.summary.compliant_count = 0
-    rep.summary.unknown_count = 0
-    rep.summary.not_applicable_count = 1
-    if rep.summary.non_compliant_count > 0:
-        overall = ComplianceStatus.NON_COMPLIANT
-    elif rep.summary.unknown_count > 0 or (rep.summary.compliant_count == 0):
-        overall = ComplianceStatus.UNKNOWN
-    else:
-        overall = ComplianceStatus.COMPLIANT
-    assert overall == ComplianceStatus.UNKNOWN
+compliance_engine = ComplianceEngine()

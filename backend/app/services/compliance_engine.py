@@ -49,26 +49,53 @@ class ComplianceEngine:
         findings: List[ComplianceFinding] = []
         rules_evaluated: Set[str] = set()
 
-        # 1. TLS Protocol Version Evaluation
-        findings.extend(self._eval_tls_version(stream_id, tls_params, rules_evaluated))
+        # TLS cryptographic rules require positive handshake evidence. The
+        # analysis route supplies this explicitly so a plaintext SMTP session
+        # cannot be interpreted as a negotiated TLS session merely because a
+        # parser returned an empty/placeholder TLS structure. For direct/unit
+        # callers that do not supply STARTTLS context, preserve legacy behavior
+        # only when concrete TLS parameters are actually present.
+        handshake_evidence = None
+        if isinstance(starttls_params, dict) and "tls_handshake_observed" in starttls_params:
+            handshake_evidence = bool(starttls_params.get("tls_handshake_observed"))
+        elif tls_params is not None:
+            handshake_evidence = bool(
+                isinstance(tls_params, dict)
+                and any(
+                    tls_params.get(key) not in (None, "", "UNKNOWN", "UNAVAILABLE")
+                    for key in ("version", "cipher_suite")
+                )
+            )
 
-        # 2. Cipher Suite Evaluation
-        findings.extend(self._eval_cipher_suite(stream_id, tls_params, rules_evaluated))
+        if handshake_evidence:
+            # 1. TLS Protocol Version Evaluation
+            findings.extend(self._eval_tls_version(stream_id, tls_params, rules_evaluated))
 
-        # 3. Key Exchange & Forward Secrecy Evaluation
-        findings.extend(self._eval_key_exchange(stream_id, key_exchange_params, rules_evaluated))
+            # 2. Cipher Suite Evaluation
+            findings.extend(self._eval_cipher_suite(stream_id, tls_params, rules_evaluated, handshake_evidence=True))
 
-        # 4. Certificate Validity & Cryptography Evaluation
-        findings.extend(self._eval_certificate(stream_id, cert_audit_params, ref_time, rules_evaluated))
+            # 3. Key Exchange & Forward Secrecy Evaluation
+            findings.extend(self._eval_key_exchange(stream_id, key_exchange_params, rules_evaluated))
 
-        # 5. STARTTLS Protocol Flow Evaluation
+            # 4. Certificate Validity & Cryptography Evaluation
+            findings.extend(self._eval_certificate(stream_id, cert_audit_params, ref_time, rules_evaluated))
+
+            # 5. Identity & Hostname Alignment Evaluation
+            findings.extend(self._eval_identity(stream_id, identity_result, rules_evaluated))
+
+            # 6. Trust & Revocation Evidence Evaluation
+            findings.extend(self._eval_trust_and_revocation(stream_id, trust_result, rules_evaluated))
+
+        # STARTTLS is an email-protocol flow rule and remains applicable even
+        # when no TLS handshake occurred.
         findings.extend(self._eval_starttls(stream_id, starttls_params, rules_evaluated))
 
-        # 6. Identity & Hostname Alignment Evaluation
-        findings.extend(self._eval_identity(stream_id, identity_result, rules_evaluated))
-
-        # 7. Trust & Revocation Evidence Evaluation
-        findings.extend(self._eval_trust_and_revocation(stream_id, trust_result, rules_evaluated))
+        # Plaintext email transport is a separate evidence-based weakness.
+        # It applies only when plaintext email bytes are observed and the
+        # session did not advertise/request STARTTLS. A STARTTLS-advertised
+        # plaintext continuation is represented exclusively by RULE-STARTTLS-002
+        # to avoid duplicate findings.
+        findings.extend(self._eval_plaintext_transport(stream_id, starttls_params, rules_evaluated))
 
         # Evidence-aware deduplication
         deduped_findings: List[ComplianceFinding] = []
@@ -209,25 +236,30 @@ class ComplianceEngine:
 
     # --- 2. Cipher Suite Evaluator ---
     def _eval_cipher_suite(
-        self, stream_id: str, tls: Optional[Dict[str, Any]], evaluated: Set[str]
+        self,
+        stream_id: str,
+        tls: Optional[Dict[str, Any]],
+        evaluated: Set[str],
+        handshake_evidence: bool = False,
     ) -> List[ComplianceFinding]:
         findings = []
-        if not tls or "cipher_suite" not in tls or not tls["cipher_suite"]:
-            target_rule = "RULE-CIPHER-UNKNOWN" if rule_catalog.get_rule("RULE-CIPHER-UNKNOWN") else "RULE-CIPHER-001"
-            evaluated.add(target_rule)
-            findings.append(
-                self._build_finding(
-                    stream_id=stream_id,
-                    rule_id=target_rule,
-                    status=ComplianceStatus.UNKNOWN,
-                    observed_prop="tls.cipher_suite",
-                    observed_val="UNAVAILABLE",
-                    ref_val="Approved AEAD Cipher Suite",
-                )
-            )
+
+        # A cipher rule is applicable only when a real TLS handshake has been
+        # observed AND a concrete negotiated cipher-suite value exists. Missing
+        # cipher evidence is not a NULL cipher and must not fall back to
+        # RULE-CIPHER-001.
+        if not handshake_evidence:
+            return findings
+        if not tls or "cipher_suite" not in tls:
             return findings
 
-        cs = str(tls["cipher_suite"]).strip().upper()
+        raw_cipher = tls.get("cipher_suite")
+        if raw_cipher is None:
+            return findings
+
+        cs = str(raw_cipher).strip().upper()
+        if cs in {"", "UNKNOWN", "UNAVAILABLE", "NOT_AVAILABLE", "NONE", "N/A", "NA"}:
+            return findings
 
         if "NULL" in cs:
             evaluated.add("RULE-CIPHER-001")
@@ -585,15 +617,34 @@ class ComplianceEngine:
         state = str(stls.get("starttls_state", "")).upper()
         evaluated.add("RULE-STARTTLS-002")
 
-        if state == "DOWNGRADE_SUSPECTED":
+        plaintext_observed = bool(stls.get("plaintext_observed", False))
+        tls_transition_detected = bool(stls.get("tls_transition_detected", False))
+        tls_handshake_observed = bool(stls.get("tls_handshake_observed", False))
+
+        # STARTTLS advertised/requested and the captured stream then remained
+        # plaintext is a concrete protocol-flow finding. This is NOT a claim
+        # that an attacker stripped STARTTLS; the finding is based only on the
+        # observed state and plaintext continuation.
+        if (
+            state in {
+                "CAPABILITY_ADVERTISED",
+                "STARTTLS_REQUESTED",
+                "SERVER_ACCEPTED",
+                "FAILED",
+                "DOWNGRADE_SUSPECTED",
+            }
+            and plaintext_observed
+            and not tls_transition_detected
+            and not tls_handshake_observed
+        ):
             findings.append(
                 self._build_finding(
                     stream_id=stream_id,
                     rule_id="RULE-STARTTLS-002",
                     status=ComplianceStatus.NON_COMPLIANT,
                     observed_prop="starttls.state",
-                    observed_val=state,
-                    ref_val="SUCCEEDED or NOT_APPLICABLE",
+                    observed_val=f"{state}_PLAINTEXT_CONTINUATION",
+                    ref_val="TLS transition after STARTTLS advertisement/request",
                 )
             )
         elif state in ("SUCCEEDED", "TLS_TRANSITION_DETECTED"):
@@ -618,6 +669,61 @@ class ComplianceEngine:
                     ref_val="NOT_APPLICABLE",
                 )
             )
+        return findings
+
+    def _eval_plaintext_transport(
+        self,
+        stream_id: str,
+        stls: Optional[Dict[str, Any]],
+        evaluated: Set[str],
+    ) -> List[ComplianceFinding]:
+        """Evaluate concrete plaintext email transport without mislabeling it as a TLS cipher.
+
+        RULE-PLAINTEXT-001 is used only when actual email application bytes are
+        observed in cleartext and no TLS transition/handshake is present. If
+        STARTTLS was advertised/requested and plaintext then continued, that
+        condition is represented by RULE-STARTTLS-002 instead.
+        """
+        findings: List[ComplianceFinding] = []
+        if not stls or not isinstance(stls, dict):
+            return findings
+
+        if not bool(stls.get("plaintext_observed", False)):
+            return findings
+
+        protocol = str(stls.get("protocol", "")).upper()
+        if protocol not in {"SMTP", "IMAP", "POP3"}:
+            return findings
+
+        if bool(stls.get("tls_transition_detected", False)):
+            return findings
+        if bool(stls.get("tls_handshake_observed", False)):
+            return findings
+
+        state = str(stls.get("starttls_state", "")).upper()
+        if state in {
+            "CAPABILITY_ADVERTISED",
+            "STARTTLS_REQUESTED",
+            "SERVER_ACCEPTED",
+            "SUCCEEDED",
+            "TLS_TRANSITION_DETECTED",
+            "DOWNGRADE_SUSPECTED",
+        }:
+            return findings
+
+        observed_value = stls.get("plaintext_observed_value") or f"PLAINTEXT_{protocol}"
+
+        evaluated.add("RULE-PLAINTEXT-001")
+        findings.append(
+            self._build_finding(
+                stream_id=stream_id,
+                rule_id="RULE-PLAINTEXT-001",
+                status=ComplianceStatus.NON_COMPLIANT,
+                observed_prop="transport.security",
+                observed_val=str(observed_value),
+                ref_val="TLS-protected email transport",
+            )
+        )
         return findings
 
     # --- 6. Identity Evaluator ---

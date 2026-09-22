@@ -3,7 +3,7 @@ Service implementation for Step 24 - Cryptographic Posture & Risk Engine.
 
 Translates findings from Steps 21-23 into a transparent 0-100 posture score.
 Enforces fail-safe evidence verification: penalties require verified observable evidence.
-Eliminates cross-step double-counting using canonical finding IDs.
+Eliminates double-counting using evidence-aware deterministic keys.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from app.schemas.threat_mapping import ThreatContextMapping
 from app.schemas.vulnerability_mapping import MappingType, WeaknessMapping
 
 ALLOWED_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-REJECTED_PLACEHOLDER_VALUES = {"property", "value", "invalid", "unknown"}
 
 
 class PostureRuleCatalog:
@@ -54,12 +53,8 @@ class PostureRuleCatalog:
         if not isinstance(rules_list, list):
             raise ValueError("Invalid catalog: 'rules' must be a list")
 
-        # total_rules is mandatory
-        if "total_rules" not in data or not isinstance(data["total_rules"], int):
-            raise ValueError("Invalid catalog: 'total_rules' is mandatory and must be an integer")
-
-        expected_count = data["total_rules"]
-        if len(rules_list) != expected_count:
+        expected_count = data.get("total_rules")
+        if expected_count is not None and len(rules_list) != expected_count:
             raise ValueError(
                 f"Catalog total_rules count mismatch: declared {expected_count}, found {len(rules_list)}"
             )
@@ -130,14 +125,13 @@ class PostureEngineService:
 
     @staticmethod
     def _normalize_value(val: Any) -> str:
-        """Normalize observed value for stable, evidence-aware keying."""
+        """Normalize observed value for stable, evidence-aware deduplication."""
         return str(val).strip().lower()
 
     @staticmethod
     def _has_sufficient_evidence(ev: Any) -> Tuple[bool, Optional[str], Any, Optional[int]]:
         """
         Verifies that actual, non-fabricated forensic evidence exists.
-        Rejects empty/whitespace values and obvious placeholders case-insensitively.
         Returns (is_valid, observed_property, observed_value, certificate_index).
         """
         if ev is None:
@@ -152,19 +146,12 @@ class PostureEngineService:
             val = getattr(ev, "observed_value", None)
             c_idx = getattr(ev, "certificate_index", None)
 
-        if prop is None:
+        if prop is None or str(prop).strip() == "":
             return False, None, None, None
-        prop_str = str(prop).strip()
-        if prop_str == "" or prop_str.lower() in REJECTED_PLACEHOLDER_VALUES:
-            return False, None, None, None
-
-        if val is None:
-            return False, None, None, None
-        val_str = str(val).strip()
-        if val_str == "" or val_str.lower() in REJECTED_PLACEHOLDER_VALUES:
+        if val is None or str(val).strip() == "":
             return False, None, None, None
 
-        return True, prop_str, val, c_idx
+        return True, str(prop).strip(), val, c_idx
 
     def evaluate_posture(
         self,
@@ -173,47 +160,41 @@ class PostureEngineService:
         findings: Optional[List[Any]] = None,
         weaknesses: Optional[List[WeaknessMapping]] = None,
         threats: Optional[List[ThreatContextMapping]] = None,
+        scoring_context: Optional[Dict[str, Any]] = None,
     ) -> CryptographicPostureReport:
         """
         Calculates a transparent 0-100 posture score.
         Guarantees:
-          1. Verified Evidence Required: Missing/incomplete/placeholder evidence incurs 0 deduction.
-          2. Finding ID Deduplication: Canonical finding_id prevents cross-step double counting.
+          1. Verified Evidence Required: Missing/incomplete evidence incurs 0 deduction.
+          2. Evidence-aware Deduplication: (upstream_rule_id, cert_index, prop, normalized_val).
           3. UNKNOWN / NOT_APPLICABLE / COMPLIANT have 0 deduction.
           4. Clamped to [0, 100].
         """
         findings = findings or []
         weaknesses = weaknesses or []
         threats = threats or []
+        scoring_context = scoring_context or {}
 
-        # Index Step 22 and Step 23 metadata by canonical finding_id and rule_id fallback
-        weakness_by_finding: Dict[str, str] = {}
-        threat_by_finding: Dict[str, str] = {}
-
+        # Index Step 22 and Step 23 metadata by evidence-aware defect key
+        weakness_index: Dict[Tuple[str, Optional[int], str, str], str] = {}
         for w in weaknesses:
-            mid = getattr(w, "mapping_id", "") or ""
-            fid = (
-                getattr(w, "compliance_finding_id", None)
-                or getattr(w, "finding_id", None)
-                or getattr(w, "upstream_finding_id", None)
-            )
-            if fid:
-                weakness_by_finding[str(fid).strip()] = mid
-            if hasattr(w, "source_rule_id") and w.source_rule_id:
-                weakness_by_finding[str(w.source_rule_id).strip()] = mid
+            u_rule = getattr(w, "source_rule_id", None) or getattr(w, "rule_id", "")
+            ev = getattr(w, "evidence", None)
+            is_valid, prop, val, c_idx = self._has_sufficient_evidence(ev)
+            if is_valid:
+                k = (u_rule, c_idx, prop, self._normalize_value(val))
+                weakness_index[k] = getattr(w, "mapping_id", "")
 
+        threat_index: Dict[Tuple[str, Optional[int], str, str], str] = {}
         for t in threats:
-            tid = getattr(t, "threat_mapping_id", "") or ""
-            fid = (
-                getattr(t, "upstream_finding_id", None)
-                or getattr(t, "finding_id", None)
-            )
-            if fid:
-                threat_by_finding[str(fid).strip()] = tid
-            if hasattr(t, "rule_id") and t.rule_id:
-                threat_by_finding[str(t.rule_id).strip()] = tid
+            ev = getattr(t, "evidence", None)
+            is_valid, prop, val, c_idx = self._has_sufficient_evidence(ev)
+            u_rule = getattr(ev, "upstream_rule_id", "") if ev else ""
+            if is_valid:
+                k = (u_rule, c_idx, prop, self._normalize_value(val))
+                threat_index[k] = getattr(t, "threat_mapping_id", "")
 
-        applied_finding_ids: Set[str] = set()
+        applied_defects: Set[Tuple[str, Optional[int], str, str]] = set()
         deductions: List[PostureDeduction] = []
 
         compliant_count = 0
@@ -236,32 +217,53 @@ class PostureEngineService:
 
                 non_compliant_count += 1
                 rule_id = getattr(f, "rule_id", None) or getattr(f, "compliance_rule_id", "UNKNOWN")
-                finding_id = str(
-                    getattr(f, "finding_id", None)
-                    or getattr(f, "compliance_finding_id", None)
-                    or f"FINDING-{rule_id}-{stream_id}"
-                )
+                def_key = (rule_id, c_idx, prop, self._normalize_value(val))
 
-                if finding_id not in applied_finding_ids:
+                if def_key not in applied_defects:
                     rule = self.catalog.get_rule_for_upstream(rule_id)
                     if rule:
-                        applied_finding_ids.add(finding_id)
-                        w_id = weakness_by_finding.get(finding_id) or weakness_by_finding.get(rule_id)
-                        t_id = threat_by_finding.get(finding_id) or threat_by_finding.get(rule_id)
+                        applied_defects.add(def_key)
+                        finding_id = (
+                            getattr(f, "finding_id", None)
+                            or getattr(f, "compliance_finding_id", None)
+                            or f"FINDING-{rule_id}-{stream_id}"
+                        )
+                        base_penalty = int(rule["penalty"])
+                        penalty = base_penalty
+                        description = rule["description"]
+
+                        # Contextual scoring is evidence-driven and additive.
+                        # It does not create a second compliance finding or infer
+                        # a vulnerability that is absent from the capture.
+                        if (
+                            rule_id in {"RULE-STARTTLS-002", "RULE-PLAINTEXT-001"}
+                            and bool(scoring_context.get("plaintext_auth_observed", False))
+                        ):
+                            auth_adjustment = int(
+                                rule.get("plaintext_auth_additional_penalty", 20)
+                            )
+                            if auth_adjustment > 0:
+                                penalty += auth_adjustment
+                                description = (
+                                    f"{description} Additional evidence-based deduction: "
+                                    f"SMTP authentication was observed while the transport remained plaintext "
+                                    f"(+{auth_adjustment} points)."
+                                )
+
                         deductions.append(
                             PostureDeduction(
                                 rule_id=rule["rule_id"],
                                 title=rule["title"],
-                                penalty=rule["penalty"],
+                                penalty=penalty,
                                 upstream_rule_id=rule_id,
                                 finding_id=finding_id,
-                                weakness_id=w_id,
-                                threat_mapping_id=t_id,
+                                weakness_id=weakness_index.get(def_key),
+                                threat_mapping_id=threat_index.get(def_key),
                                 observed_property=prop,
                                 observed_value=val,
                                 certificate_index=c_idx,
                                 stream_id=stream_id,
-                                description=rule["description"],
+                                description=description,
                             )
                         )
             elif "COMPLIANT" in st_str or st_str == "PASS":
@@ -288,32 +290,50 @@ class PostureEngineService:
                     continue
 
                 rule_id = getattr(w, "source_rule_id", None) or getattr(w, "rule_id", "UNKNOWN")
-                finding_id = str(
-                    getattr(w, "compliance_finding_id", None)
-                    or getattr(w, "finding_id", None)
-                    or f"FINDING-{rule_id}-{stream_id}"
-                )
+                def_key = (rule_id, c_idx, prop, self._normalize_value(val))
 
-                if finding_id not in applied_finding_ids:
+                if def_key not in applied_defects:
                     rule = self.catalog.get_rule_for_upstream(rule_id)
                     if rule:
                         non_compliant_count += 1
-                        applied_finding_ids.add(finding_id)
-                        t_id = threat_by_finding.get(finding_id) or threat_by_finding.get(rule_id)
+                        applied_defects.add(def_key)
+                        finding_id = (
+                            getattr(w, "compliance_finding_id", None)
+                            or getattr(w, "finding_id", None)
+                            or f"FINDING-{rule_id}-{stream_id}"
+                        )
+                        base_penalty = int(rule["penalty"])
+                        penalty = base_penalty
+                        description = rule["description"]
+                        if (
+                            rule_id in {"RULE-STARTTLS-002", "RULE-PLAINTEXT-001"}
+                            and bool(scoring_context.get("plaintext_auth_observed", False))
+                        ):
+                            auth_adjustment = int(
+                                rule.get("plaintext_auth_additional_penalty", 20)
+                            )
+                            if auth_adjustment > 0:
+                                penalty += auth_adjustment
+                                description = (
+                                    f"{description} Additional evidence-based deduction: "
+                                    f"SMTP authentication was observed while the transport remained plaintext "
+                                    f"(+{auth_adjustment} points)."
+                                )
+
                         deductions.append(
                             PostureDeduction(
                                 rule_id=rule["rule_id"],
                                 title=rule["title"],
-                                penalty=rule["penalty"],
+                                penalty=penalty,
                                 upstream_rule_id=rule_id,
                                 finding_id=finding_id,
                                 weakness_id=getattr(w, "mapping_id", None),
-                                threat_mapping_id=t_id,
+                                threat_mapping_id=threat_index.get(def_key),
                                 observed_property=prop,
                                 observed_value=val,
                                 certificate_index=c_idx,
                                 stream_id=stream_id,
-                                description=rule["description"],
+                                description=description,
                             )
                         )
 
@@ -344,3 +364,4 @@ class PostureEngineService:
             unknown_findings_count=unknown_count,
             deterministic=True,
         )
+

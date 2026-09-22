@@ -243,6 +243,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
         server_record_result = None
         client_hello_result = None
         server_hello_result = None
+        tls_handshake_observed = False
 
         if target_stream is not None and has_tls:
             try:
@@ -268,6 +269,17 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                     analysis_id,
                     client_hello_result.status.value,
                     server_hello_result.status.value,
+                )
+
+                # Negotiated TLS parameters are applicable only when both
+                # handshake directions were successfully observed and parsed.
+                tls_handshake_observed = bool(
+                    client_hello_result is not None
+                    and server_hello_result is not None
+                    and getattr(client_hello_result.status, "value", client_hello_result.status) == "COMPLETE"
+                    and getattr(server_hello_result.status, "value", server_hello_result.status) == "COMPLETE"
+                    and client_hello_result.client_hello is not None
+                    and server_hello_result.server_hello is not None
                 )
 
             except Exception as tls_err:
@@ -304,7 +316,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
         parsed_certificate_chain = None
         certificate_audit = None
 
-        if server_record_result is not None:
+        if server_record_result is not None and tls_handshake_observed:
             try:
                 negotiated_version = None
 
@@ -427,7 +439,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
 
         tls_params = None
 
-        if server_hello_result is not None:
+        if tls_handshake_observed and server_hello_result is not None:
             sh = server_hello_result.server_hello
 
             if sh is not None:
@@ -503,11 +515,82 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
         starttls_params = None
 
         if starttls_assessment is not None:
+            # Preserve the complete STARTTLS evidence needed by the
+            # deterministic compliance layer. Previously only the state was
+            # forwarded, which discarded protocol/reconstruction evidence and
+            # prevented a concrete plaintext-transport finding from being
+            # evaluated.
             starttls_params = {
+                "protocol": getattr(
+                    starttls_assessment.protocol,
+                    "value",
+                    starttls_assessment.protocol,
+                ),
                 "starttls_state": (
                     starttls_assessment.starttls_state.value
-                )
+                ),
+                "reconstruction_status": getattr(
+                    starttls_assessment.reconstruction_status,
+                    "value",
+                    starttls_assessment.reconstruction_status,
+                ),
+                "unresolved_gaps": bool(
+                    starttls_assessment.unresolved_gaps
+                ),
+                "tls_transition_detected": bool(
+                    starttls_assessment.tls_transition_detected
+                ),
+                "tls_handshake_observed": bool(tls_handshake_observed),
             }
+
+            # Preserve concrete plaintext evidence even when the STARTTLS
+            # state machine becomes UNKNOWN because TCP reconstruction has a
+            # gap. This is derived only from bytes actually reconstructed in
+            # the target email stream; it does not infer a downgrade attack.
+            client_payload = bytes(target_stream.client_payload or b"")
+            server_payload = bytes(target_stream.server_payload or b"")
+            plaintext_blocks = client_payload + b"\r\n" + server_payload
+
+            plaintext_markers = {
+                "SMTP": (
+                    b"220 ", b"EHLO ", b"HELO ", b"MAIL FROM:",
+                    b"RCPT TO:", b"AUTH ", b"DATA\r\n", b"QUIT\r\n",
+                ),
+                "IMAP": (
+                    b"* OK ", b"* PREAUTH ", b" CAPABILITY", b" LOGIN",
+                    b" SELECT", b" AUTHENTICATE",
+                ),
+                "POP3": (
+                    b"+OK ", b" USER ", b" PASS ", b" RETR ", b" STAT",
+                ),
+            }
+
+            protocol_value = str(starttls_params.get("protocol", "")).upper()
+            markers = plaintext_markers.get(protocol_value, ())
+            plaintext_observed = any(
+                marker in plaintext_blocks
+                for marker in markers
+            )
+
+            # Authentication is tracked separately because it changes the
+            # security impact of an otherwise valid plaintext-transport
+            # finding. This is based only on an observed SMTP AUTH command.
+            plaintext_auth_observed = (
+                protocol_value == "SMTP"
+                and b"AUTH " in plaintext_blocks.upper()
+            )
+
+            # Only mark observed plaintext when this analysis has no TLS record
+            # evidence. For this capture, SMTP banners/commands are directly
+            # visible while no TLS transition exists.
+            if plaintext_observed and not tls_handshake_observed:
+                starttls_params["plaintext_observed"] = True
+                starttls_params["plaintext_observed_value"] = (
+                    f"PLAINTEXT_{protocol_value}"
+                )
+
+            if plaintext_auth_observed and not tls_handshake_observed:
+                starttls_params["plaintext_auth_observed"] = True
 
             if (
                 downgrade_result is not None
@@ -574,6 +657,12 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
             findings=findings,
             weaknesses=weakness_mappings,
             threats=threat_mappings,
+            scoring_context={
+                "plaintext_auth_observed": bool(
+                    starttls_params
+                    and starttls_params.get("plaintext_auth_observed", False)
+                ),
+            },
         )
 
         # ==============================================================
@@ -715,6 +804,47 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                                 "NOT_REVOKED_OR_NO_EVIDENCE",
                             }:
                                 certificate_info["is_revoked"] = False
+
+                # Build ML-facing TLS/certificate values from the
+                # authoritative values already computed above.
+                tls_version = (
+                    tls_params.get("version")
+                    if tls_params is not None
+                    else "Unavailable from captured evidence"
+                )
+
+                cipher_suite = (
+                    tls_params.get("cipher_suite")
+                    if tls_params is not None
+                    else "Unavailable from captured evidence"
+                )
+
+                key_exchange = (
+                    str(
+                        getattr(
+                            key_exchange_result,
+                            "exchange_type",
+                            "UNKNOWN",
+                        ).value
+                    )
+                    if (
+                        key_exchange_result is not None
+                        and getattr(key_exchange_result, "exchange_type", None) is not None
+                    )
+                    else "Unavailable from captured evidence"
+                )
+
+                certificate_key_size = (
+                    cert_params.get("public_key_bits")
+                    if cert_params is not None
+                    else None
+                )
+
+                signature_algorithm = (
+                    cert_params.get("signature_algorithm")
+                    if cert_params is not None
+                    else "Unavailable from captured evidence"
+                )
 
                 ml_context = {
                     "tls_version": tls_version,
