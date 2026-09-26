@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// MailRakhwala backend
+// FastAPI is running on port 8001.
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -25,6 +28,9 @@ export const setActiveAnalysisId = (id) => {
   }
 };
 
+/**
+ * Check backend health.
+ */
 export const checkHealth = async () => {
   const response = await apiClient.get('/health');
   return response.data;
@@ -36,9 +42,11 @@ export const getHealth = checkHealth;
  * Upload a PCAP / PCAPNG capture.
  *
  * IMPORTANT:
- * This intentionally uses axios directly instead of apiClient.
- * apiClient has a global JSON Content-Type header, while this request
- * must be multipart/form-data.
+ * This uses axios directly instead of apiClient because
+ * the request must be multipart/form-data.
+ *
+ * Axios/browser will automatically set the correct
+ * multipart Content-Type boundary.
  */
 export const uploadCapture = async (file) => {
   if (!file) {
@@ -57,16 +65,24 @@ export const uploadCapture = async (file) => {
   return response.data;
 };
 
+/**
+ * Get the current status of an analysis job.
+ */
 export const getAnalysisJob = async (analysisId) => {
   if (!analysisId) {
     throw new Error('Analysis ID is required.');
   }
 
-  const response = await apiClient.get(`/analysis/${analysisId}`);
+  const response = await apiClient.get(
+    `/analysis/${analysisId}`
+  );
 
   return response.data;
 };
 
+/**
+ * Get the completed comprehensive analysis report.
+ */
 export const getAnalysisReport = async (analysisId) => {
   if (!analysisId) {
     throw new Error('Analysis ID is required.');
@@ -79,7 +95,14 @@ export const getAnalysisReport = async (analysisId) => {
   return response.data;
 };
 
+/**
+ * Return the backend URL for the PDF report.
+ */
 export const exportReportPDFUrl = (analysisId) => {
+  if (!analysisId) {
+    throw new Error('Analysis ID is required.');
+  }
+
   return `${API_BASE_URL}/analysis/${analysisId}/report/pdf`;
 };
 

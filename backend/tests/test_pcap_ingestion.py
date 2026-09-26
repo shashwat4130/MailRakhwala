@@ -70,7 +70,18 @@ SYNTHETIC_PCAPNG_SHB_BE = (
 
 
 @pytest.fixture(autouse=True)
-def clean_job_store():
+def clean_job_store(monkeypatch):
+    # These tests validate the upload/ingestion boundary only.
+    # Prevent FastAPI BackgroundTasks from launching the real forensic
+    # pipeline (TShark/TCP reassembly/etc.) during upload tests.
+    from app.api.routes import analysis as analysis_routes
+
+    monkeypatch.setattr(
+        analysis_routes,
+        "run_pipeline_task",
+        lambda **kwargs: None,
+    )
+
     job_store.clear()
     yield
     job_store.clear()

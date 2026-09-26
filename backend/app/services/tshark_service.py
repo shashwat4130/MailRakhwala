@@ -2,7 +2,10 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
+from collections import deque
 from typing import Generator, List, Optional
 
 from app.core.config import settings
@@ -31,14 +34,11 @@ class TSharkService:
     """
     TShark-backed packet dissection service.
 
-    The parser intentionally preserves the TCP metadata required by the
-    TCP reassembly layer:
-      - tcp.stream
-      - TCP sequence / acknowledgement numbers
-      - TCP flags
-      - TCP payload
+    The parser preserves the TCP metadata required by the TCP reassembly
+    layer and the TLS metadata required by downstream analysis.
 
-    TLS metadata is also retained for downstream protocol/TLS analysis.
+    TShark stdout is consumed incrementally so the entire packet capture
+    does not have to be loaded into memory at once.
     """
 
     DISSECTION_FIELDS: List[str] = [
@@ -84,6 +84,12 @@ class TSharkService:
             raise TSharkNotFoundError(
                 "TShark binary could not be found on the system."
             )
+
+        # Keep this configurable without requiring a config.py change yet.
+        # Default: 120 seconds of no output / stalled processing.
+        self.timeout_sec = float(
+            getattr(settings, "TSHARK_TIMEOUT_SEC", 120.0)
+        )
 
     def _find_tshark(self) -> Optional[str]:
         configured = getattr(settings, "TSHARK_PATH", None)
@@ -142,18 +148,36 @@ class TSharkService:
             return "unknown"
 
     def _build_command(self, pcap_path: Path) -> List[str]:
+        """
+        Build a deterministic TShark fields command.
+
+        IMPORTANT:
+        separator must be an actual TAB character.
+
+        The previous implementation used:
+            separator=/t
+
+        which does not produce tab-separated output and can cause the
+        parser to reject otherwise valid TShark lines.
+        """
+
         cmd = [
             self.binary_path,
             "-r",
             str(pcap_path),
+
+            # Flush stdout after each dissected packet so the Python
+            # streaming reader receives output immediately.
+            "-l",
+
             "-T",
             "fields",
 
-            # Tab-separated fields.
+            # Actual tab separator.
             "-E",
-            "separator=/t",
+            "separator=\t",
 
-            # Only the first occurrence of each field.
+            # First occurrence of each field.
             "-E",
             "occurrence=f",
         ]
@@ -164,6 +188,9 @@ class TSharkService:
         return cmd
 
     def build_command(self, pcap_path: Path) -> List[str]:
+        """
+        Public compatibility wrapper used by tests and callers.
+        """
         return self._build_command(pcap_path)
 
     @staticmethod
@@ -203,22 +230,20 @@ class TSharkService:
         """
         Convert TShark tcp.payload output into raw bytes.
 
-        TShark commonly emits payload as hexadecimal octets, for example:
+        Examples accepted:
 
             16:03:03:00:2f:01:00:00:2b
 
-        Some builds may emit continuous hexadecimal:
+        and:
 
             160303002f0100002b
-
-        Both representations are accepted.
         """
+
         value = (value or "").strip()
 
         if not value:
             return None
 
-        # Remove common separators used by TShark.
         normalized = (
             value.replace(":", "")
             .replace(" ", "")
@@ -228,7 +253,6 @@ class TSharkService:
         if not normalized:
             return None
 
-        # Hex must contain complete octets.
         if len(normalized) % 2 != 0:
             logger.debug(
                 "Ignoring malformed TCP payload with odd hex length: %s",
@@ -255,8 +279,6 @@ class TSharkService:
     ) -> int:
         """
         Build the TCP control-flag bitmask expected by the reassembly layer.
-
-        The reassembly service uses the standard TCP flag values:
 
             SYN = 0x02
             ACK = 0x10
@@ -348,9 +370,6 @@ class TSharkService:
         # TLS fields
         # ------------------------------------------------------------------
 
-        # These are intentionally parsed/preserved even though the current
-        # DissectedPacket schema stores the primary protocol evidence through
-        # highest_layer/frame.protocols.
         tls_record_version = cols[20].strip()
         tls_handshake_type = cols[21].strip()
         tls_handshake_version = cols[22].strip()
@@ -358,8 +377,8 @@ class TSharkService:
         tls_server_name = cols[24].strip()
         tls_sig_hash_alg = cols[25].strip()
 
-        # Prevent unused-field warnings and make it explicit that these
-        # fields are intentionally requested for TShark/TLS evidence.
+        # These fields are intentionally requested and retained at the
+        # TShark layer for future/downstream TLS evidence handling.
         _ = (
             tls_record_version,
             tls_handshake_type,
@@ -471,7 +490,6 @@ class TSharkService:
             tcp_stream=tcp_stream,
             highest_layer=highest_layer,
 
-            # Step 08 TCP reconstruction data
             tcp_seq=tcp_seq,
             tcp_ack=tcp_ack,
             tcp_flags=tcp_flags,
@@ -479,10 +497,18 @@ class TSharkService:
             payload=payload,
         )
 
-    def _terminate_process(
-        self,
-        proc: subprocess.Popen,
-    ) -> None:
+    @staticmethod
+    def _terminate_process(proc: subprocess.Popen) -> None:
+        """
+        Best-effort process termination.
+
+        terminate() is attempted first, followed by kill() if the process
+        does not exit quickly.
+        """
+
+        if proc.poll() is not None:
+            return
+
         try:
             proc.terminate()
             proc.wait(timeout=2)
@@ -490,6 +516,30 @@ class TSharkService:
         except Exception:
             try:
                 proc.kill()
+                proc.wait(timeout=2)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _terminate_process(proc: subprocess.Popen) -> None:
+        """
+        Best-effort process termination.
+
+        terminate() is attempted first, followed by kill() if the process
+        does not exit quickly.
+        """
+
+        if proc.poll() is not None:
+            return
+
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+
+        except Exception:
+            try:
+                proc.kill()
+                proc.wait(timeout=2)
             except Exception:
                 pass
 
@@ -500,13 +550,21 @@ class TSharkService:
         """
         Stream parsed packets from TShark.
 
-        No filename-specific logic exists here. All protocol evidence comes
-        from actual packet fields.
+        stdout is consumed directly by the calling thread using readline().
+        stderr is drained independently so its OS pipe cannot block TShark.
+
+        A watchdog guarantees that a stalled TShark process cannot leave the
+        analysis hanging indefinitely.
         """
 
         if not pcap_path.is_file():
             raise FileNotFoundError(
                 f"PCAP not found: {pcap_path}"
+            )
+
+        if not self.is_available():
+            raise TSharkNotFoundError(
+                "TShark binary could not be found on the system."
             )
 
         cmd = self._build_command(pcap_path)
@@ -516,54 +574,156 @@ class TSharkService:
             pcap_path,
         )
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+            )
+
+        except FileNotFoundError as err:
+            raise TSharkNotFoundError(
+                f"Unable to execute TShark: {self.binary_path}"
+            ) from err
+
+        except OSError as err:
+            raise TSharkExecutionError(
+                f"Unable to start TShark: {err}"
+            ) from err
+
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        # Drain stderr continuously. If stderr fills its OS pipe,
+        # TShark can block even while stdout is being consumed.
+        stderr_lines = deque(maxlen=200)
+
+        def drain_stderr() -> None:
+            try:
+                while True:
+                    line = proc.stderr.readline()
+
+                    if line == "":
+                        break
+
+                    stderr_lines.append(line.rstrip("\r\n"))
+
+            except (ValueError, OSError):
+                pass
+
+        stderr_thread = threading.Thread(
+            target=drain_stderr,
+            daemon=True,
+            name="tshark-stderr-reader",
         )
+        stderr_thread.start()
+
+        # Hard watchdog. readline() itself can block, so the timeout
+        # must live independently of the stdout-consuming thread.
+        watchdog_triggered = threading.Event()
+
+        def watchdog() -> None:
+            if proc.poll() is None:
+                watchdog_triggered.set()
+                logger.error(
+                    "TShark watchdog triggered after %.1f seconds: %s",
+                    self.timeout_sec,
+                    pcap_path,
+                )
+                self._terminate_process(proc)
+
+        watchdog_timer = threading.Timer(
+            self.timeout_sec,
+            watchdog,
+        )
+        watchdog_timer.daemon = True
+        watchdog_timer.start()
+
+        packet_count = 0
 
         try:
-            assert proc.stdout is not None
+            # Read stdout directly. This has been verified independently
+            # against the installed Windows TShark binary.
+            while True:
+                line = proc.stdout.readline()
 
-            for line in proc.stdout:
-                packet = self.parse_line(line)
+                if line == "":
+                    break
 
-                if packet is not None:
-                    yield packet
-
-            proc.wait()
-
-            if proc.returncode != 0:
-                stderr_output = (
-                    proc.stderr.read()
-                    if proc.stderr
-                    else ""
-                )
-
-                if (
-                    "Some fields aren't valid" in stderr_output
-                    or "not valid" in stderr_output
-                ):
-                    raise TSharkExecutionError(
-                        f"TShark field error: {stderr_output.strip()}"
+                if watchdog_triggered.is_set():
+                    raise TSharkTimeoutError(
+                        "TShark packet dissection timed out after "
+                        f"{self.timeout_sec:.1f} seconds."
                     )
 
-                logger.warning(
-                    "TShark exited with code %s: %s",
-                    proc.returncode,
-                    stderr_output.strip(),
+                packet = self.parse_line(line)
+
+                if packet is None:
+                    continue
+
+                packet_count += 1
+                yield packet
+
+            # Wait briefly for normal TShark termination.
+            if proc.poll() is None:
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._terminate_process(proc)
+
+            if watchdog_triggered.is_set():
+                raise TSharkTimeoutError(
+                    "TShark packet dissection timed out after "
+                    f"{self.timeout_sec:.1f} seconds."
                 )
+
+            return_code = proc.returncode
+            stderr_output = "\n".join(stderr_lines).strip()
+
+            if return_code != 0:
+                raise TSharkExecutionError(
+                    "TShark exited with code "
+                    f"{return_code}: {stderr_output}"
+                )
+
+            if stderr_output:
+                logger.debug(
+                    "TShark stderr: %s",
+                    stderr_output,
+                )
+
+            logger.info(
+                "TShark dissection completed: %d packets",
+                packet_count,
+            )
+
+        except TSharkError:
+            self._terminate_process(proc)
+            raise
 
         except Exception:
             self._terminate_process(proc)
             raise
 
         finally:
+            watchdog_timer.cancel()
+
             if proc.poll() is None:
                 self._terminate_process(proc)
 
+            try:
+                proc.stdout.close()
+            except (ValueError, OSError):
+                pass
+
+            try:
+                proc.stderr.close()
+            except (ValueError, OSError):
+                pass
+
+            stderr_thread.join(timeout=1)
 
 tshark_service = TSharkService()

@@ -1,6 +1,6 @@
 from pathlib import Path
-import pytest
-from app.services.tshark_service import TSharkService, tshark_service
+
+from app.services.tshark_service import tshark_service
 
 
 def test_tshark_command_contains_frame_protocols_and_no_ws_col():
@@ -8,13 +8,12 @@ def test_tshark_command_contains_frame_protocols_and_no_ws_col():
     dummy_pcap = Path("dummy.pcap")
     cmd = tshark_service._build_command(dummy_pcap)
 
-    # Core dissection fields
     assert "frame.number" in cmd
+    assert cmd[cmd.index("-E") + 1] == "separator=\t"
     assert "frame.protocols" in cmd
     assert "ip.src" in cmd
     assert "ip.dst" in cmd
 
-    # Incompatible / invalid fields must NOT be requested
     assert "tls.handshake.extensions_supported_version" not in cmd
     assert "tls.handshake.extensions_alpn_str" not in cmd
     assert "tls.alpn_string" not in cmd
@@ -28,7 +27,17 @@ def test_tshark_command_contains_frame_protocols_and_no_ws_col():
 
 def test_tshark_parse_tcp_tls_stack():
     """Verify dissection of a TCP/TLS protocol stack."""
-    line = "1\t1710000000.123456\t128\t192.168.1.10\t\t192.168.1.20\t\teth:ethertype:ip:tcp:tls\t54321\t\t443\t\t0"
+    line = (
+        "1\t1710000000.123456\t128\t"
+        "192.168.1.10\t\t"
+        "192.168.1.20\t\t"
+        "eth:ethertype:ip:tcp:tls\t"
+        "54321\t\t"
+        "443\t\t"
+        "0"
+        + "\t" * 13
+    )
+
     packet = tshark_service.parse_line(line)
 
     assert packet is not None
@@ -43,7 +52,16 @@ def test_tshark_parse_tcp_tls_stack():
 
 def test_tshark_parse_udp_dns_stack():
     """Verify dissection of a UDP protocol stack."""
-    line = "2\t1710000001.000000\t64\t10.0.0.1\t\t10.0.0.2\t\teth:ethertype:ip:udp:dns\t\t5353\t\t53\t"
+    line = (
+        "2\t1710000001.000000\t64\t"
+        "10.0.0.1\t\t"
+        "10.0.0.2\t\t"
+        "eth:ethertype:ip:udp:dns\t\t"
+        "5353\t\t"
+        "53\t"
+        + "\t" * 13
+    )
+
     packet = tshark_service.parse_line(line)
 
     assert packet is not None
@@ -57,7 +75,13 @@ def test_tshark_parse_udp_dns_stack():
 
 def test_tshark_parse_empty_protocols():
     """Verify missing or empty frame.protocols does not crash parsing."""
-    line = "3\t1710000002.000000\t40\t192.168.1.5\t\t192.168.1.1\t\t\t\t\t\t\t"
+    line = (
+        "3\t1710000002.000000\t40\t"
+        "192.168.1.5\t\t"
+        "192.168.1.1\t\t\t\t\t\t\t"
+        + "\t" * 13
+    )
+
     packet = tshark_service.parse_line(line)
 
     assert packet is not None

@@ -115,6 +115,15 @@ RE_POP3_STRONG_CMDS = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Commands that are materially more specific to POP3 than FTP.
+# USER/PASS/RETR/LIST/DELE/STAT overlap with FTP and must never
+# classify an otherwise-unidentified TCP stream as POP3 by themselves.
+RE_POP3_UNIQUE_CMDS = re.compile(
+    rb"^(?:UIDL(?:\s+\d+)?\b|TOP\s+\d+\s+\d+\b|"
+    rb"APOP\s+\S+\s+\S+|STLS\b|CAPA\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 # ============================================================
 # IMAP Client Commands
@@ -314,7 +323,7 @@ class EmailProtocolClassifier:
                     )
                 )
 
-                indicators.append("BANNER_SMTP")
+                indicators.append("BANNER_SMTP_220")
 
             imap_banner = RE_IMAP_BANNER.search(block)
 
@@ -335,7 +344,7 @@ class EmailProtocolClassifier:
                     )
                 )
 
-                indicators.append("BANNER_IMAP")
+                indicators.append("BANNER_IMAP_OK")
 
             pop3_banner = RE_POP3_BANNER.search(block)
 
@@ -356,7 +365,7 @@ class EmailProtocolClassifier:
                     )
                 )
 
-                indicators.append("BANNER_POP3")
+                indicators.append("BANNER_POP3_PLUS_OK")
 
         # ----------------------------------------------------
         # 3. CLIENT COMMAND EVIDENCE
@@ -412,8 +421,20 @@ class EmailProtocolClassifier:
                 indicators.append("CMD_IMAP")
 
             pop3_cmd = RE_POP3_STRONG_CMDS.search(block)
+            pop3_unique_cmd = RE_POP3_UNIQUE_CMDS.search(block)
 
-            if pop3_cmd:
+            # USER/PASS/RETR/LIST/DELE/STAT are shared with FTP. They are
+            # valid POP3 evidence only when the stream already has POP3
+            # context (standard POP3 port or POP3 banner). A genuinely
+            # POP3-specific command can establish application evidence on a
+            # non-standard port without creating the FTP false positive.
+            pop3_context = (
+                port_protocol == EmailProtocol.POP3
+                or any(indicator == "BANNER_POP3_PLUS_OK" for indicator in indicators)
+                or pop3_unique_cmd is not None
+            )
+
+            if pop3_cmd and pop3_context:
                 pop3_score += 4
 
                 evidence.append(
@@ -442,44 +463,44 @@ class EmailProtocolClassifier:
             EmailProtocol.POP3: pop3_score,
         }
 
-        best_score = max(scores.values())
+        # Standard mail ports are deterministic protocol context. Never let
+        # overlapping application commands override a recognized mail port.
+        if port_protocol is not None:
+            best_protocol = port_protocol
+        else:
+            best_score = max(scores.values())
 
-        # No email evidence whatsoever.
-        if best_score == 0:
+            if best_score == 0:
+                return ProtocolClassification(
+                    stream_id=stream.stream_id,
+                    protocol=EmailProtocol.UNKNOWN,
+                    confidence=ConfidenceLevel.UNKNOWN,
+                    reconstruction_status=stream.reconstruction_status,
+                    evidence=evidence,
+                    matched_indicators=indicators,
+                    is_tls_port_context=is_tls_context,
+                    has_unresolved_gaps=stream.has_unresolved_gaps,
+                )
 
-            return ProtocolClassification(
-                stream_id=stream.stream_id,
-                protocol=EmailProtocol.UNKNOWN,
-                confidence=ConfidenceLevel.UNKNOWN,
-                reconstruction_status=stream.reconstruction_status,
-                evidence=evidence,
-                matched_indicators=indicators,
-                is_tls_port_context=is_tls_context,
-                has_unresolved_gaps=stream.has_unresolved_gaps,
-            )
+            best_protocols = [
+                protocol
+                for protocol, score in scores.items()
+                if score == best_score
+            ]
 
-        # Find all protocols tied for the highest score.
-        best_protocols = [
-            protocol
-            for protocol, score in scores.items()
-            if score == best_score
-        ]
+            if len(best_protocols) != 1:
+                return ProtocolClassification(
+                    stream_id=stream.stream_id,
+                    protocol=EmailProtocol.UNKNOWN,
+                    confidence=ConfidenceLevel.UNKNOWN,
+                    reconstruction_status=stream.reconstruction_status,
+                    evidence=evidence,
+                    matched_indicators=indicators,
+                    is_tls_port_context=is_tls_context,
+                    has_unresolved_gaps=stream.has_unresolved_gaps,
+                )
 
-        # Never arbitrarily choose between tied protocols.
-        if len(best_protocols) != 1:
-
-            return ProtocolClassification(
-                stream_id=stream.stream_id,
-                protocol=EmailProtocol.UNKNOWN,
-                confidence=ConfidenceLevel.UNKNOWN,
-                reconstruction_status=stream.reconstruction_status,
-                evidence=evidence,
-                matched_indicators=indicators,
-                is_tls_port_context=is_tls_context,
-                has_unresolved_gaps=stream.has_unresolved_gaps,
-            )
-
-        best_protocol = best_protocols[0]
+            best_protocol = best_protocols[0]
 
         has_port_match = (
             port_protocol == best_protocol

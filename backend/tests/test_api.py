@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
 from app.services.job_store import job_store
+from app.api.routes import analysis as analysis_routes
 
 client = TestClient(app)
 
@@ -38,7 +39,22 @@ SYNTHETIC_PCAPNG_SHB_HEADER = (
 
 
 @pytest.fixture(autouse=True)
-def clean_job_store():
+def isolate_api_tests(monkeypatch):
+    """
+    API endpoint tests must not launch the real forensic worker.
+
+    FastAPI TestClient executes BackgroundTasks during the request lifecycle,
+    so upload tests would otherwise invoke TShark against tiny synthetic PCAPs
+    and wait for the production TShark timeout.
+
+    Real PCAP execution belongs in dedicated end-to-end tests.
+    """
+    monkeypatch.setattr(
+        analysis_routes,
+        "run_pipeline_task",
+        lambda *args, **kwargs: None,
+    )
+
     job_store.clear()
     yield
     job_store.clear()

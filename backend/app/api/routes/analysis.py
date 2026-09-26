@@ -191,24 +191,72 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
         # 4. TLS PRESENCE
         # ==============================================================
 
-        has_tls = any(
-            str(getattr(packet, "highest_layer", "") or "").upper() == "TLS"
-            for packet in packets
-        )
+        # TLS evidence must be scoped to the selected email stream. A TLS
+        # packet belonging to an unrelated connection in the same PCAP must
+        # never make an SMTP/IMAP/POP3 stream appear encrypted.
+        #
+        # ReconstructedStream intentionally stores application payloads rather
+        # than the original TShark per-packet layer labels, so inspect the
+        # reconstructed client/server byte streams for a valid TLS record
+        # header. This is evidence of an observed TLS record, not merely a
+        # protocol/port expectation.
+        def _contains_tls_record(payload: bytes) -> bool:
+            if not payload:
+                return False
 
-        if not has_tls:
-            # frame.protocols is not part of the normalized packet contract,
-            # so only use highest_layer here.
-            has_tls = any(
-                "TLS" in str(getattr(packet, "highest_layer", "") or "").upper()
-                for packet in packets
+            # TLS record content types:
+            #   20 change_cipher_spec
+            #   21 alert
+            #   22 handshake
+            #   23 application_data
+            #   24 heartbeat
+            # The legacy SSLv3/TLS record header uses a 0x03 major version.
+            tls_content_types = {20, 21, 22, 23, 24}
+
+            # Search only a bounded prefix. We only need evidence that at
+            # least one syntactically plausible TLS record was captured.
+            scan_limit = min(len(payload) - 5, 64 * 1024)
+
+            for offset in range(max(0, scan_limit)):
+                content_type = payload[offset]
+                version_major = payload[offset + 1]
+                version_minor = payload[offset + 2]
+
+                if (
+                    content_type in tls_content_types
+                    and version_major == 0x03
+                    and version_minor in {0x00, 0x01, 0x02, 0x03, 0x04}
+                ):
+                    record_length = int.from_bytes(
+                        payload[offset + 3:offset + 5],
+                        byteorder="big",
+                    )
+
+                    # TLS record payloads are limited to 2^14 bytes, with a
+                    # small implementation allowance for protocol overhead.
+                    if 0 <= record_length <= 18432:
+                        return True
+
+            return False
+
+        has_tls = False
+
+        if target_stream is not None:
+            client_payload = bytes(
+                getattr(target_stream, "client_payload", b"") or b""
+            )
+            server_payload = bytes(
+                getattr(target_stream, "server_payload", b"") or b""
             )
 
-        # For implicit TLS email ports, a TLS session is expected even when
-        # there is no plaintext email banner.
-        if target_classification is not None:
-            if target_classification.is_tls_port_context:
-                has_tls = True
+            has_tls = (
+                _contains_tls_record(client_payload)
+                or _contains_tls_record(server_payload)
+            )
+
+        # IMPORTANT: an implicit-TLS port such as 465/993/995 is contextual
+        # evidence only. A port number does not prove that TLS records were
+        # actually captured, so is_tls_port_context must not set has_tls.
 
         # ==============================================================
         # 5. STARTTLS STATE ANALYSIS
@@ -514,91 +562,106 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
 
         starttls_params = None
 
-        if starttls_assessment is not None:
-            # Preserve the complete STARTTLS evidence needed by the
-            # deterministic compliance layer. Previously only the state was
-            # forwarded, which discarded protocol/reconstruction evidence and
-            # prevented a concrete plaintext-transport finding from being
-            # evaluated.
-            starttls_params = {
-                "protocol": getattr(
-                    starttls_assessment.protocol,
-                    "value",
-                    starttls_assessment.protocol,
-                ),
-                "starttls_state": (
-                    starttls_assessment.starttls_state.value
-                ),
-                "reconstruction_status": getattr(
-                    starttls_assessment.reconstruction_status,
-                    "value",
-                    starttls_assessment.reconstruction_status,
-                ),
-                "unresolved_gaps": bool(
-                    starttls_assessment.unresolved_gaps
-                ),
-                "tls_transition_detected": bool(
-                    starttls_assessment.tls_transition_detected
-                ),
-                "tls_handshake_observed": bool(tls_handshake_observed),
-            }
+        # Build STARTTLS/plaintext evidence whenever a target email stream and
+        # protocol classification are available. Do not require the STARTTLS
+        # state machine to succeed: a plaintext email stream is still concrete
+        # evidence even when STARTTLS reconstruction is incomplete.
+        if target_stream is not None and target_classification is not None:
+            try:
+                protocol_value = str(
+                    getattr(
+                        target_classification.protocol,
+                        "value",
+                        target_classification.protocol,
+                    )
+                ).upper()
 
-            # Preserve concrete plaintext evidence even when the STARTTLS
-            # state machine becomes UNKNOWN because TCP reconstruction has a
-            # gap. This is derived only from bytes actually reconstructed in
-            # the target email stream; it does not infer a downgrade attack.
-            client_payload = bytes(target_stream.client_payload or b"")
-            server_payload = bytes(target_stream.server_payload or b"")
-            plaintext_blocks = client_payload + b"\r\n" + server_payload
+                if starttls_assessment is not None:
+                    starttls_state = getattr(
+                        starttls_assessment.starttls_state,
+                        "value",
+                        starttls_assessment.starttls_state,
+                    )
+                    reconstruction_status = getattr(
+                        starttls_assessment.reconstruction_status,
+                        "value",
+                        starttls_assessment.reconstruction_status,
+                    )
+                    unresolved_gaps = bool(starttls_assessment.unresolved_gaps)
+                    tls_transition_detected = bool(
+                        starttls_assessment.tls_transition_detected
+                    )
+                else:
+                    starttls_state = "UNKNOWN"
+                    reconstruction_status = "UNKNOWN"
+                    unresolved_gaps = False
+                    tls_transition_detected = False
 
-            plaintext_markers = {
-                "SMTP": (
-                    b"220 ", b"EHLO ", b"HELO ", b"MAIL FROM:",
-                    b"RCPT TO:", b"AUTH ", b"DATA\r\n", b"QUIT\r\n",
-                ),
-                "IMAP": (
-                    b"* OK ", b"* PREAUTH ", b" CAPABILITY", b" LOGIN",
-                    b" SELECT", b" AUTHENTICATE",
-                ),
-                "POP3": (
-                    b"+OK ", b" USER ", b" PASS ", b" RETR ", b" STAT",
-                ),
-            }
+                starttls_params = {
+                    "protocol": protocol_value,
+                    "starttls_state": str(starttls_state).upper(),
+                    "reconstruction_status": str(reconstruction_status).upper(),
+                    "unresolved_gaps": unresolved_gaps,
+                    "tls_transition_detected": tls_transition_detected,
+                    "tls_handshake_observed": bool(tls_handshake_observed),
+                }
 
-            protocol_value = str(starttls_params.get("protocol", "")).upper()
-            markers = plaintext_markers.get(protocol_value, ())
-            plaintext_observed = any(
-                marker in plaintext_blocks
-                for marker in markers
-            )
+                # Inspect only bytes actually reconstructed from the target
+                # email stream. This does not infer an attack or downgrade.
+                client_payload = bytes(target_stream.client_payload or b"")
+                server_payload = bytes(target_stream.server_payload or b"")
+                plaintext_blocks = (
+                    client_payload + b"\r\n" + server_payload
+                ).upper()
 
-            # Authentication is tracked separately because it changes the
-            # security impact of an otherwise valid plaintext-transport
-            # finding. This is based only on an observed SMTP AUTH command.
-            plaintext_auth_observed = (
-                protocol_value == "SMTP"
-                and b"AUTH " in plaintext_blocks.upper()
-            )
+                plaintext_markers = {
+                    "SMTP": (
+                        b"220 ", b"EHLO ", b"HELO ", b"MAIL FROM:",
+                        b"RCPT TO:", b"AUTH ", b"DATA\r\n", b"QUIT\r\n",
+                    ),
+                    "IMAP": (
+                        b"* OK ", b"* PREAUTH ", b" CAPABILITY",
+                        b" LOGIN", b" SELECT", b" AUTHENTICATE",
+                    ),
+                    "POP3": (
+                        b"+OK ", b" USER ", b" PASS ", b" RETR ",
+                        b" STAT",
+                    ),
+                }
 
-            # Only mark observed plaintext when this analysis has no TLS record
-            # evidence. For this capture, SMTP banners/commands are directly
-            # visible while no TLS transition exists.
-            if plaintext_observed and not tls_handshake_observed:
-                starttls_params["plaintext_observed"] = True
-                starttls_params["plaintext_observed_value"] = (
-                    f"PLAINTEXT_{protocol_value}"
+                markers = plaintext_markers.get(protocol_value, ())
+                plaintext_observed = any(
+                    marker in plaintext_blocks for marker in markers
                 )
 
-            if plaintext_auth_observed and not tls_handshake_observed:
-                starttls_params["plaintext_auth_observed"] = True
+                plaintext_auth_observed = (
+                    protocol_value == "SMTP"
+                    and b"AUTH " in plaintext_blocks
+                )
 
-            if (
-                downgrade_result is not None
-                and downgrade_result.is_downgrade_suspected
-            ):
-                starttls_params["starttls_state"] = "DOWNGRADE_SUSPECTED"
+                if plaintext_observed and not tls_handshake_observed:
+                    starttls_params["plaintext_observed"] = True
+                    starttls_params["plaintext_observed_value"] = (
+                        f"PLAINTEXT_{protocol_value}"
+                    )
 
-        # ==============================================================
+                if plaintext_auth_observed and not tls_handshake_observed:
+                    starttls_params["plaintext_auth_observed"] = True
+
+                if (
+                    downgrade_result is not None
+                    and downgrade_result.is_downgrade_suspected
+                ):
+                    starttls_params["starttls_state"] = "DOWNGRADE_SUSPECTED"
+
+            except Exception as starttls_evidence_err:
+                logger.exception(
+                    "STARTTLS/plaintext evidence construction failed for %s: %s",
+                    analysis_id,
+                    starttls_evidence_err,
+                )
+                starttls_params = None
+
         # 11. STEP 21 — DETERMINISTIC COMPLIANCE
         # ==============================================================
 
@@ -920,10 +983,24 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                     ),
                 )
 
-                if shap_cls is not None:
-                    explainer = shap_cls()
+                if (
+                    shap_cls is not None
+                    and "classifier" in locals()
+                    and getattr(classifier, "_is_fitted", False)
+                    and getattr(classifier, "model", None) is not None
+                ):
+                    # SHAPExplainerService requires an already-fitted
+                    # XGBoostRiskClassifier. Do not instantiate SHAP against
+                    # the default unfitted classifier used by this pipeline.
+                    explainer = shap_cls(classifier)
                     if hasattr(explainer, "explain"):
                         shap_res = explainer.explain(features)
+                else:
+                    logger.info(
+                        "SHAP explanation skipped for %s: "
+                        "XGBoost classifier has no fitted model.",
+                        analysis_id,
+                    )
 
             except Exception as shap_err:
                 logger.exception(
