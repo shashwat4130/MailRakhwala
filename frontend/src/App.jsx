@@ -1,5 +1,11 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from 'react-router-dom';
 
 import Sidebar from './components/Sidebar';
 
@@ -8,6 +14,7 @@ import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Findings from './pages/Findings';
 import Reports from './pages/Reports';
+import Documentation from './pages/Documentation';
 
 function ApplicationShell({ children }) {
   return (
@@ -25,16 +32,41 @@ function ApplicationShell({ children }) {
   );
 }
 
+function ReloadToNewCapture() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const navigation = performance.getEntriesByType('navigation')[0];
+
+    if (navigation?.type !== 'reload') {
+      return;
+    }
+
+    localStorage.removeItem('active_analysis_id');
+    localStorage.removeItem('analysis_id');
+
+    window.dispatchEvent(new Event('analysisIdChanged'));
+
+    const currentPath = window.location.pathname;
+
+    // Analysis pages start a fresh capture after a browser refresh.
+    // Documentation is independent of the active capture, so it stays open.
+    if (currentPath !== '/' && currentPath !== '/documentation') {
+      navigate('/', { replace: true });
+    }
+  }, [navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <ReloadToNewCapture />
 
+      <Routes>
         {/* Home / PCAP Upload */}
-        <Route
-          path="/"
-          element={<Home />}
-        />
+        <Route path="/" element={<Home />} />
 
         {/* Dashboard */}
         <Route
@@ -46,7 +78,7 @@ export default function App() {
           }
         />
 
-        {/* Analysis */}
+        {/* Stream Analysis */}
         <Route
           path="/analysis"
           element={
@@ -56,7 +88,7 @@ export default function App() {
           }
         />
 
-        {/* Findings */}
+        {/* Findings & CVEs */}
         <Route
           path="/findings"
           element={
@@ -66,7 +98,7 @@ export default function App() {
           }
         />
 
-        {/* Reports */}
+        {/* Forensic Reports */}
         <Route
           path="/reports"
           element={
@@ -76,6 +108,11 @@ export default function App() {
           }
         />
 
+        {/* Documentation - standalone page */}
+        <Route path="/documentation" element={<Documentation />} />
+
+        {/* Unknown routes return to Home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

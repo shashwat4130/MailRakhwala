@@ -181,7 +181,7 @@ export default function Reports() {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-8">
         <div className="flex items-center gap-3 text-slate-500">
-          <RefreshCw className="w-5 h-5 animate-spin text-violet-600" />
+          <RefreshCw className="w-5 h-5 animate-spin text-[#0B5ED7]" />
           <span className="text-sm font-medium">
             Compiling forensic audit package...
           </span>
@@ -193,7 +193,7 @@ export default function Reports() {
   if (!effectiveId) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-8">
-        <div className="w-full max-w-lg rounded-3xl border border-violet-100 bg-white p-10 text-center shadow-xl shadow-violet-100/40">
+        <div className="w-full max-w-lg rounded-3xl border border-blue-100 bg-white p-10 text-center shadow-[0_18px_55px_rgba(15,76,160,0.08)]">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
             <ShieldAlert className="w-7 h-7" />
           </div>
@@ -277,19 +277,19 @@ export default function Reports() {
     : 'No identifiable SMTP, SMTPS, IMAP, IMAPS, POP3, or POP3S traffic was detected. Cryptographic email security was therefore not assessed.';
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="relative min-h-screen overflow-hidden bg-[#f8fbff] text-slate-900">
       <div className="relative overflow-hidden">
         {/* Atmospheric background */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 right-0 h-96 w-96 rounded-full bg-violet-100/50 blur-3xl" />
-          <div className="absolute top-80 -left-32 h-80 w-80 rounded-full bg-purple-100/40 blur-3xl" />
+          <div className="absolute -top-32 right-0 h-96 w-96 rounded-full bg-blue-100/50 blur-3xl" />
+          <div className="absolute top-80 -left-32 h-80 w-80 rounded-full bg-cyan-100/35 blur-3xl" />
         </div>
 
         <div className="relative mx-auto max-w-7xl px-6 py-8 lg:px-10">
           {/* Header */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-violet-700">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#0B5ED7]">
                 <FileText className="h-3.5 w-3.5" />
                 Forensic Report
               </div>
@@ -303,7 +303,7 @@ export default function Reports() {
                 this analysis session.
               </p>
 
-              <p className="mt-2 font-mono text-xs text-violet-600">
+              <p className="mt-2 font-mono text-xs text-[#0B5ED7]">
                 Session: {effectiveId}
               </p>
             </div>
@@ -312,7 +312,7 @@ export default function Reports() {
               <button
                 type="button"
                 onClick={handleDownloadJSON}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
               >
                 <Download className="h-4 w-4" />
                 Export JSON
@@ -322,7 +322,7 @@ export default function Reports() {
                 href={exportReportPDFUrl(effectiveId)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-[0_8px_24px_rgba(11,94,215,0.20)] transition hover:bg-[#084FB8]"
               >
                 <FileText className="h-4 w-4" />
                 Download PDF Report
@@ -335,7 +335,7 @@ export default function Reports() {
             className={`mt-8 overflow-hidden rounded-3xl border ${
               hasEmailSignals
                 ? 'border-emerald-100 bg-emerald-50/50'
-                : 'border-violet-100 bg-violet-50/50'
+                : 'border-blue-100 bg-blue-50/50'
             }`}
           >
             <div className="p-6 lg:p-7">
@@ -345,7 +345,7 @@ export default function Reports() {
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
                       hasEmailSignals
                         ? 'bg-emerald-100 text-emerald-600'
-                        : 'bg-violet-100 text-violet-600'
+                        : 'bg-blue-100 text-[#0B5ED7]'
                     }`}
                   >
                     {hasEmailSignals ? (
@@ -372,7 +372,7 @@ export default function Reports() {
                   className={`shrink-0 rounded-full px-4 py-2 text-xs font-black uppercase tracking-wider ${
                     hasEmailSignals
                       ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-violet-100 text-violet-700'
+                      : 'bg-blue-100 text-[#0B5ED7]'
                   }`}
                 >
                   {hasEmailSignals ? 'ASSESSED' : 'NOT ASSESSED'}
@@ -422,7 +422,7 @@ export default function Reports() {
                 value={protocolLabel}
                 valueClass={
                   hasEmailSignals
-                    ? 'text-violet-700'
+                    ? 'text-[#0B5ED7]'
                     : 'text-slate-500'
                 }
               />
@@ -496,9 +496,9 @@ export default function Reports() {
 
           {/* No email signals explanation */}
           {!hasEmailSignals && (
-            <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6 lg:p-7">
+            <section className="mt-8 rounded-3xl border border-blue-100 bg-blue-50/45 p-6 lg:p-7">
               <div className="flex gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-600 shadow-sm">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0B5ED7] shadow-sm">
                   <Network className="h-5 w-5" />
                 </div>
 
@@ -517,7 +517,7 @@ export default function Reports() {
                   <p className="mt-3 text-xs font-semibold text-slate-500">
                     Posture score, cryptographic findings, ML risk
                     classification, and anomaly assessment are therefore
-                    shown as <span className="font-black text-violet-700">
+                    shown as <span className="font-black text-[#0B5ED7]">
                       Not Assessed
                     </span> rather than being inferred from unrelated traffic.
                   </p>
@@ -527,8 +527,8 @@ export default function Reports() {
           )}
 
           {/* Methodology */}
-          <section className="mt-8 rounded-3xl border border-violet-100 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-black uppercase tracking-wider text-violet-700">
+          <section className="mt-8 rounded-[24px] border border-blue-100/90 bg-white/90 p-6 shadow-[0_14px_45px_rgba(15,76,160,0.07)] backdrop-blur-xl">
+            <h3 className="text-sm font-black uppercase tracking-wider text-[#0B5ED7]">
               Assessment Basis
             </h3>
 
@@ -540,7 +540,7 @@ export default function Reports() {
             </p>
 
             {report?.methodology_disclaimer && (
-              <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-400">
+              <p className="mt-3 border-t border-blue-100 pt-3 text-xs leading-5 text-slate-400">
                 {report.methodology_disclaimer}
               </p>
             )}
@@ -558,9 +558,9 @@ function SummaryCard({
   valueClass = 'text-slate-900',
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-violet-200 hover:shadow-md">
+    <div className="rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
           {icon}
         </div>
 
@@ -586,9 +586,9 @@ function InfoCard({
   value,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-violet-600">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-[#0B5ED7]">
           {icon}
         </div>
 

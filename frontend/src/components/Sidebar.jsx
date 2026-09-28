@@ -1,114 +1,115 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
+  Home,
   LayoutDashboard,
-  History,
-  Gauge,
-  UploadCloud,
+  Network,
+  AlertTriangle,
+  FileText,
+  BookOpen,
 } from 'lucide-react';
 
-const navigation = [
+const navItems = [
   {
-    name: 'Upload PCAP',
+    label: 'Home',
     href: '/',
-    icon: UploadCloud,
+    icon: Home,
   },
   {
-    name: 'Dashboard',
+    label: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
   },
   {
-    name: 'Analysis History',
-    href: '/history',
-    icon: History,
+    label: 'Stream Analysis',
+    href: '/analysis',
+    icon: Network,
   },
   {
-    name: 'Score Criteria',
-    href: '/score-criteria',
-    icon: Gauge,
+    label: 'Findings & CVEs',
+    href: '/findings',
+    icon: AlertTriangle,
+  },
+  {
+    label: 'Forensic Reports',
+    href: '/reports',
+    icon: FileText,
+  },
+  {
+    label: 'Documentation',
+    href: '/documentation',
+    icon: BookOpen,
   },
 ];
 
 export default function Sidebar() {
   return (
-    <aside className="w-64 min-h-screen shrink-0 border-r border-gray-200 bg-white flex flex-col">
+    <aside className="hidden h-screen w-[250px] shrink-0 border-r border-blue-100 bg-white/95 shadow-[8px_0_30px_rgba(15,76,160,0.06)] backdrop-blur-xl lg:flex">
+      <div className="flex h-full w-full flex-col">
 
-      {/* Logo */}
-      <div className="px-5 pt-7 pb-8">
-        <div className="flex items-center justify-center">
-          <video
-            src="/mailrakhwala-logo.mp4"
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-44 h-auto object-contain"
-          />
+        {/* Logo */}
+        <div className="flex h-[92px] items-center px-5">
+          <div className="relative h-[66px] w-[175px] overflow-visible">
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              src="/mailrakhwala-logo.mp4"
+              className="absolute left-0 top-1/2 h-[92px] w-[180px] -translate-y-1/2 scale-[1.1] object-contain object-left"
+              aria-label="MailRakhwala"
+            />
+          </div>
         </div>
 
-      
-      </div>
+        <div className="mx-5 h-px bg-blue-100" />
 
-      {/* Navigation */}
-      <nav className="px-3 space-y-1.5">
-        {navigation.map((item) => {
-          const Icon = item.icon;
-
-          return (
+        {/* Navigation */}
+        <nav className="flex flex-1 flex-col gap-1.5 px-4 py-6">
+          {navItems.map(({ label, href, icon: Icon }) => (
             <NavLink
-              key={item.name}
-              to={item.href}
+              key={href}
+              to={href}
+              end={href === '/'}
               className={({ isActive }) =>
-                `group relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                `group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all ${
                   isActive
-                    ? 'bg-purple-50 text-purple-700 border border-purple-100 shadow-sm'
-                    : 'text-gray-600 border border-transparent hover:bg-purple-50/60 hover:text-purple-700'
+                    ? 'bg-[#0B5ED7]/10 text-[#0B5ED7] shadow-sm'
+                    : 'text-[#192837]/65 hover:bg-[#0B5ED7]/5 hover:text-[#0B5ED7]'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-7 rounded-r-full bg-purple-600" />
-                  )}
-
-                  <Icon
-                    className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
                       isActive
-                        ? 'text-purple-600'
-                        : 'text-gray-400 group-hover:text-purple-600'
+                        ? 'bg-[#0B5ED7]/10 text-[#0B5ED7]'
+                        : 'bg-slate-50 text-slate-500 group-hover:bg-blue-50 group-hover:text-[#0B5ED7]'
                     }`}
-                    strokeWidth={1.8}
-                  />
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
 
-                  <span>{item.name}</span>
+                  <span>{label}</span>
                 </>
               )}
             </NavLink>
-          );
-        })}
-      </nav>
+          ))}
+        </nav>
 
-      {/* Security Baseline */}
-      <div className="mt-auto p-4">
-        <div className="border border-purple-100 bg-purple-50/40 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-600">
-              Security Baseline
-            </span>
-          </div>
-
-          <div className="space-y-1.5 text-[10px] font-mono text-gray-400">
-            <div>NIST SP 800-52r2</div>
-            <div>RFC 8996</div>
-            <div>RFC 8446</div>
+        {/* Footer */}
+        <div className="px-5 pb-6">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/50 px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#0B5ED7]">
+              MailRakhwala
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-[#192837]/50">
+              Email security intelligence for captured traffic.
+            </p>
           </div>
         </div>
       </div>
-
     </aside>
   );
 }

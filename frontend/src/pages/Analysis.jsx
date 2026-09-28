@@ -21,8 +21,8 @@ import { getActiveAnalysisId, getAnalysisReport } from '../services/api';
 const Card = ({ children, className = '' }) => (
   <section
     className={[
-      'rounded-3xl border border-violet-100 bg-white',
-      'shadow-[0_18px_55px_rgba(71,38,130,0.08)]',
+      'rounded-[24px] border border-blue-100/90 bg-white/90',
+      'shadow-[0_14px_45px_rgba(15,76,160,0.07)] backdrop-blur-xl',
       className,
     ].join(' ')}
   >
@@ -31,8 +31,8 @@ const Card = ({ children, className = '' }) => (
 );
 
 const SectionLabel = ({ children }) => (
-  <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-violet-600">
-    <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+  <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#0B5ED7]">
+    <span className="h-1.5 w-1.5 rounded-full bg-[#0B5ED7]" />
     {children}
   </div>
 );
@@ -192,10 +192,10 @@ export default function Analysis() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white px-6 py-10">
+      <div className="min-h-screen bg-[#f8fbff] px-6 py-10">
         <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#0B5ED7]">
               <RefreshCw className="h-5 w-5 animate-spin" />
             </div>
             <p className="text-sm font-semibold text-slate-600">
@@ -209,10 +209,10 @@ export default function Analysis() {
 
   if (!report) {
     return (
-      <div className="min-h-screen bg-white px-6 py-10">
+      <div className="min-h-screen bg-[#f8fbff] px-6 py-10">
         <div className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center">
           <Card className="w-full p-10 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0B5ED7]">
               <TerminalSquare className="h-7 w-7" />
             </div>
             <h1 className="mt-5 text-2xl font-black tracking-tight text-slate-900">
@@ -225,7 +225,7 @@ export default function Analysis() {
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[0_8px_24px_rgba(11,94,215,0.20)] transition hover:bg-[#084FB8]"
             >
               <Upload className="h-4 w-4" />
               Upload PCAP
@@ -253,14 +253,20 @@ export default function Analysis() {
   }[streamState.tone];
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-[1400px] px-6 py-8 lg:px-10">
+    <div className="relative min-h-screen overflow-hidden bg-[#f8fbff]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-[18%] -top-[16%] h-[52vh] w-[50vw] rounded-full bg-blue-300/12 blur-[120px]" />
+        <div className="absolute -right-[18%] top-[10%] h-[48vh] w-[48vw] rounded-full bg-cyan-300/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.92)_58%,rgba(248,251,255,0.72)_100%)]" />
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-[1400px] px-6 py-8 lg:px-10">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <button
               type="button"
               onClick={() => navigate('/dashboard')}
-              className="mb-5 inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-violet-600"
+              className="mb-5 inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-[#0B5ED7]"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to dashboard
@@ -279,7 +285,7 @@ export default function Analysis() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="rounded-2xl border border-blue-100 bg-white/85 px-4 py-3 shadow-sm">
               <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
                 Capture
               </p>
@@ -291,7 +297,7 @@ export default function Analysis() {
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm font-bold text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
+              className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-[#0B5ED7] transition hover:border-blue-300 hover:bg-blue-50"
             >
               <Upload className="h-4 w-4" />
               New capture
@@ -316,8 +322,8 @@ export default function Analysis() {
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_12px_35px_rgba(71,38,130,0.06)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+          <div className="rounded-2xl border border-blue-100/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(15,76,160,0.06)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
               <Layers3 className="h-5 w-5" />
             </div>
             <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
@@ -331,7 +337,7 @@ export default function Analysis() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_12px_35px_rgba(71,38,130,0.06)]">
+          <div className="rounded-2xl border border-blue-100/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(15,76,160,0.06)]">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
               <Mail className="h-5 w-5" />
             </div>
@@ -346,7 +352,7 @@ export default function Analysis() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_12px_35px_rgba(71,38,130,0.06)]">
+          <div className="rounded-2xl border border-blue-100/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(15,76,160,0.06)]">
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${streamTone.icon}`}>
               <StreamIcon className="h-5 w-5" />
             </div>
@@ -385,7 +391,7 @@ export default function Analysis() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-px bg-slate-100 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-px bg-blue-100/70 sm:grid-cols-2">
               <div className="bg-white p-6">
                 <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
                   STARTTLS state
@@ -440,9 +446,9 @@ export default function Analysis() {
             <SectionLabel>Capture context</SectionLabel>
 
             <div className="mt-5 space-y-3">
-              <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-blue-50 bg-blue-50/45 px-4 py-3.5">
                 <div className="flex items-center gap-3">
-                  <Network className="h-4 w-4 text-violet-600" />
+                  <Network className="h-4 w-4 text-[#0B5ED7]" />
                   <span className="text-sm font-semibold text-slate-600">Protocol</span>
                 </div>
                 <span className="font-mono text-xs font-bold text-slate-900">
@@ -450,9 +456,9 @@ export default function Analysis() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-blue-50 bg-blue-50/45 px-4 py-3.5">
                 <div className="flex items-center gap-3">
-                  <LockKeyhole className="h-4 w-4 text-violet-600" />
+                  <LockKeyhole className="h-4 w-4 text-[#0B5ED7]" />
                   <span className="text-sm font-semibold text-slate-600">TLS</span>
                 </div>
                 <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${hasTls ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
@@ -460,9 +466,9 @@ export default function Analysis() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-blue-50 bg-blue-50/45 px-4 py-3.5">
                 <div className="flex items-center gap-3">
-                  <Layers3 className="h-4 w-4 text-violet-600" />
+                  <Layers3 className="h-4 w-4 text-[#0B5ED7]" />
                   <span className="text-sm font-semibold text-slate-600">Streams</span>
                 </div>
                 <span className="text-sm font-black text-slate-900">
@@ -470,9 +476,9 @@ export default function Analysis() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-blue-50 bg-blue-50/45 px-4 py-3.5">
                 <div className="flex items-center gap-3">
-                  <TerminalSquare className="h-4 w-4 text-violet-600" />
+                  <TerminalSquare className="h-4 w-4 text-[#0B5ED7]" />
                   <span className="text-sm font-semibold text-slate-600">Status</span>
                 </div>
                 <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
@@ -481,11 +487,11 @@ export default function Analysis() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
-              <p className="text-xs font-bold text-violet-900">
+            <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <p className="text-xs font-bold text-[#084FB8]">
                 Why this stream is shown
               </p>
-              <p className="mt-1 text-xs leading-5 text-violet-800/70">
+              <p className="mt-1 text-xs leading-5 text-[#0B5ED7]/70">
                 This view uses the backend report directly. It does not infer an
                 encrypted stream merely because a TCP stream exists.
               </p>
@@ -497,7 +503,7 @@ export default function Analysis() {
           <button
             type="button"
             onClick={() => navigate('/findings')}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 active:scale-[0.98]"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[0_8px_24px_rgba(11,94,215,0.20)] transition hover:bg-[#084FB8] active:scale-[0.98]"
           >
             See all findings
             <ChevronRight className="h-4 w-4" />

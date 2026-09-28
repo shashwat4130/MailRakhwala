@@ -106,4 +106,68 @@ export const exportReportPDFUrl = (analysisId) => {
   return `${API_BASE_URL}/analysis/${analysisId}/report/pdf`;
 };
 
+/**
+ * Download the complete analysis report as JSON.
+ */
+export const downloadAnalysisJson = async (analysisId) => {
+  if (!analysisId) {
+    throw new Error('Analysis ID is required.');
+  }
+
+  const response = await apiClient.get(
+    `/analysis/${analysisId}/report/json`,
+    {
+      responseType: 'blob',
+    }
+  );
+
+  const blob = new Blob([response.data], {
+    type: 'application/json',
+  });
+
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = `MailRakhwala_Report_${analysisId}.json`;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+};
+
+/**
+ * Download the analysis report as PDF.
+ */
+export const downloadAnalysisPdf = async (analysisId) => {
+  if (!analysisId) {
+    throw new Error('Analysis ID is required.');
+  }
+
+  const response = await apiClient.get(
+    `/analysis/${analysisId}/report/pdf`,
+    {
+      responseType: 'blob',
+    }
+  );
+
+  const blob = new Blob([response.data], {
+    type: 'application/pdf',
+  });
+
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = `MailRakhwala_Report_${analysisId}.pdf`;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+};
+
 export default apiClient;
