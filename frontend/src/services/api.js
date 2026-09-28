@@ -1,9 +1,25 @@
 import axios from 'axios';
 
-// MailRakhwala backend
-// FastAPI is running on port 8001.
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+// MailRakhwala API Base URL Resolution
+// 1. If VITE_API_URL is provided, use it (e.g. decoupled Vercel -> Render)
+// 2. If running locally under Vite dev server (port 5173), target local FastAPI on port 8001
+// 3. Otherwise (unified Docker/production deployment), use same-origin relative URLs ('')
+const resolveBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl !== undefined && envUrl !== '') {
+    return envUrl.replace(/\/+$/, '');
+  }
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+    window.location.port === '5173'
+  ) {
+    return 'http://127.0.0.1:8001';
+  }
+  return '';
+};
+
+const API_BASE_URL = resolveBaseUrl();
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,

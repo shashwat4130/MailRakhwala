@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mailrakhwala
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MAX_PCAP_SIZE_MB
+        value: 100
+      - key: CORS_ORIGINS
+        value: "*"

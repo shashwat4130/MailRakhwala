@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.schemas.domain import FindingCategory, SeverityLevel
 
-RULES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "rules"
+RULES_DIR = settings.RULES_DIR
 
 
 class RuleCatalogError(Exception):

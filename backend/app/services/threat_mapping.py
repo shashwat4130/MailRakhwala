@@ -20,6 +20,7 @@ from app.schemas.threat_mapping import (
     ThreatMappingStatus,
 )
 from app.schemas.vulnerability_mapping import MappingType, WeaknessMapping
+from app.core.config import settings
 
 
 class ThreatMappingCatalog:
@@ -27,7 +28,7 @@ class ThreatMappingCatalog:
 
     def __init__(self, catalog_path: Optional[Path] = None) -> None:
         if catalog_path is None:
-            catalog_path = Path(__file__).resolve().parent.parent.parent.parent / "rules" / "threat_mapping_rules.json"
+            catalog_path = settings.RULES_DIR / "threat_mapping_rules.json"
         self.catalog_path = catalog_path
         self.rules: Dict[str, Dict[str, Any]] = {}
         self.upstream_rule_index: Dict[str, List[Dict[str, Any]]] = {}

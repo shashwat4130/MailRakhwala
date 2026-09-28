@@ -1,0 +1,14 @@
+services:
+  mailrakhwala:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mailrakhwala-app
+    ports:
+      - "8001:8001"
+    environment:
+      - APP_ENV=production
+      - PORT=8001
+      - MAX_PCAP_SIZE_MB=100
+      - CORS_ORIGINS=*
+    restart: unless-stopped

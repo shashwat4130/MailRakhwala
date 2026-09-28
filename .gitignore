@@ -15,6 +15,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!frontend/.env.production.example
 
 # ==============================
 # PCAP / Network Captures
@@ -22,6 +23,7 @@ __pycache__/
 
 *.pcap
 *.pcapng
+!frontend/public/mailrakhwala-demo.pcap
 
 # ==============================
 # Node / Frontend

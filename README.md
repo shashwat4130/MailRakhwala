@@ -415,7 +415,19 @@ VITE_API_URL=https://your-backend-domain
 
 ---
 
-## 14. Project Structure
+## 14. Production Deployment
+
+MailRakhwala is fully prepared for one-click production cloud deployment using Docker.
+
+- **Unified Cloud Deployment (Render / Railway)**: Single container serving both the React frontend and FastAPI backend on the same origin (no CORS configuration needed).
+- **Decoupled Deployment**: Frontend on Vercel + Backend on Render Docker.
+- **Self-Hosted VPS**: One command with `docker compose up -d`.
+
+See [DEPLOYMENT.md](file:///c:/Users/shash/MailRakhwala/DEPLOYMENT.md) for full step-by-step deployment instructions.
+
+---
+
+## 15. Project Structure
 
 ```text
 MailRakhwala/

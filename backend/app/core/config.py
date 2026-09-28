@@ -5,8 +5,39 @@ Loads and validates settings from environment variables with safe defaults.
 
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
+
+
+def _resolve_rules_dir() -> Path:
+    env_path = os.getenv("RULES_DIR")
+    if env_path:
+        return Path(env_path)
+    # Check repository root: <root>/rules
+    repo_root_rules = Path(__file__).resolve().parents[3] / "rules"
+    if repo_root_rules.is_dir():
+        return repo_root_rules
+    # Check backend parent: <backend>/rules
+    backend_rules = Path(__file__).resolve().parents[2] / "rules"
+    if backend_rules.is_dir():
+        return backend_rules
+    return repo_root_rules
+
+
+def _resolve_static_dir() -> Optional[Path]:
+    env_path = os.getenv("STATIC_DIR")
+    if env_path:
+        p = Path(env_path)
+        return p if p.is_dir() else None
+    # Check repository root: <root>/frontend/dist
+    repo_root_dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    if repo_root_dist.is_dir():
+        return repo_root_dist
+    # Check backend parent: <backend>/frontend/dist
+    backend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if backend_dist.is_dir():
+        return backend_dist
+    return None
 
 
 class Settings(BaseModel):
@@ -15,6 +46,14 @@ class Settings(BaseModel):
     UPLOAD_DIR: Path = Field(
         default=Path(__file__).resolve().parent.parent.parent / "data" / "uploads",
         description="Controlled directory for temporary capture storage"
+    )
+    RULES_DIR: Path = Field(
+        default_factory=_resolve_rules_dir,
+        description="Path to canonical security rules catalog directory"
+    )
+    STATIC_DIR: Optional[Path] = Field(
+        default_factory=_resolve_static_dir,
+        description="Path to pre-built frontend static distribution assets"
     )
     CORS_ORIGINS: List[str] = Field(
         default=[
@@ -42,13 +81,21 @@ class Settings(BaseModel):
         custom_upload = os.getenv("UPLOAD_DIR")
         upload_path = Path(custom_upload) if custom_upload else cls.model_fields["UPLOAD_DIR"].default
 
+        rules_dir = _resolve_rules_dir()
+        static_dir = _resolve_static_dir()
+
         cors_raw = os.getenv("CORS_ORIGINS")
-        cors_origins = [origin.strip() for origin in cors_raw.split(",")] if cors_raw else cls.model_fields["CORS_ORIGINS"].default
+        if cors_raw:
+            cors_origins = [o.strip() for o in cors_raw.split(",") if o.strip()]
+        else:
+            cors_origins = cls.model_fields["CORS_ORIGINS"].default
 
         return cls(
             APP_ENV=env,
             MAX_PCAP_SIZE_MB=max_size,
             UPLOAD_DIR=upload_path,
+            RULES_DIR=rules_dir,
+            STATIC_DIR=static_dir,
             CORS_ORIGINS=cors_origins,
         )
 

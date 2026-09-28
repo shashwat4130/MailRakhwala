@@ -17,6 +17,7 @@ from app.schemas.posture import (
     PostureDeduction,
     PostureSeverity,
 )
+from app.core.config import settings
 from app.schemas.threat_mapping import ThreatContextMapping
 from app.schemas.vulnerability_mapping import MappingType, WeaknessMapping
 
@@ -28,7 +29,7 @@ class PostureRuleCatalog:
 
     def __init__(self, catalog_path: Optional[Path] = None) -> None:
         if catalog_path is None:
-            catalog_path = Path(__file__).resolve().parent.parent.parent.parent / "rules" / "posture_rules.json"
+            catalog_path = settings.RULES_DIR / "posture_rules.json"
         self.catalog_path = catalog_path
         self.rules: Dict[str, Dict[str, Any]] = {}
         self.upstream_index: Dict[str, Dict[str, Any]] = {}
