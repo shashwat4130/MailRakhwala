@@ -44,7 +44,6 @@ const fadeUp = {
   }),
 };
 
-// Evaluator resources. Put these files inside frontend/public/.
 const RESOURCE_LINKS = {
   demoVideo: 'https://www.youtube.com/watch?v=YOUR_VIDEO_ID',
   documentation: '/mailrakhwala-documentation.pdf',
@@ -82,10 +81,6 @@ export default function Home() {
 
   const fileInputRef = useRef(null);
 
-  /* ============================================================
-     REAL BACKEND JOB POLLING
-     ============================================================ */
-
   useEffect(() => {
     if (
       !uploadResult?.analysis_id ||
@@ -104,9 +99,6 @@ export default function Home() {
         if (job.status === 'completed') {
           setActiveAnalysisId(uploadResult.analysis_id);
           clearInterval(interval);
-
-          // Demo uses the same completion card as a normal upload.
-          // The evaluator can then choose "View Security Dashboard".
         }
 
         if (job.status === 'failed') {
@@ -119,10 +111,6 @@ export default function Home() {
 
     return () => clearInterval(interval);
   }, [uploadResult, jobStatus, demoMode, navigate]);
-
-  /* ============================================================
-     FILE VALIDATION
-     ============================================================ */
 
   const validateAndSelectFile = (selectedFile) => {
     if (!selectedFile) return;
@@ -150,10 +138,6 @@ export default function Home() {
     }
   };
 
-  /* ============================================================
-     DRAG & DROP
-     ============================================================ */
-
   const handleDragOver = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -178,10 +162,6 @@ export default function Home() {
     }
   };
 
-  /* ============================================================
-     REAL UPLOAD
-     ============================================================ */
-
   const handleUpload = async () => {
     if (!file) return;
 
@@ -205,10 +185,6 @@ export default function Home() {
       setUploading(false);
     }
   };
-
-  /* ============================================================
-     EVALUATOR DEMO PCAP
-     ============================================================ */
 
   const handleDemoPcap = async () => {
     if (uploading) return;
@@ -253,10 +229,6 @@ export default function Home() {
     }
   };
 
-  /* ============================================================
-     RESET
-     ============================================================ */
-
   const handleReset = () => {
     setFile(null);
     setUploadResult(null);
@@ -269,10 +241,6 @@ export default function Home() {
       fileInputRef.current.value = '';
     }
   };
-
-  /* ============================================================
-     HELPERS
-     ============================================================ */
 
   const formatFileSize = (bytes) => {
     if (!bytes) return '0 KB';
@@ -293,17 +261,8 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#f8fbff] text-[#192837]">
-
-      {/* ========================================================
-          STATIC BLUE GLASS ATMOSPHERE
-          No background video — the animated MailRakhwala logo
-          remains the visual centerpiece.
-          ======================================================== */}
-
       <div className="absolute inset-0 bg-white" />
 
-      {/* Blue atmosphere stays at the edges. The center remains white so the
-          logo's white background visually melts into the page. */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <motion.div
           className="absolute -left-[22%] -top-[20%] h-[62vh] w-[58vw] rounded-full bg-blue-300/18 blur-[125px]"
@@ -329,23 +288,11 @@ export default function Home() {
           transition={{ duration: 21, repeat: Infinity, ease: 'easeInOut' }}
         />
 
-        {/* Clean white center / logo quiet zone */}
         <div className="absolute inset-[8%] rounded-[45%] bg-white/88 blur-[38px]" />
-
-        {/* Very soft edge wash */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.96)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)]" />
       </div>
 
-      {/* ========================================================
-          PAGE
-          ======================================================== */}
-
       <div className="relative z-10 flex h-full flex-col">
-
-        {/* ======================================================
-            HIDDEN SIDEBAR TRIGGER
-            ====================================================== */}
-
         <header className="absolute left-4 right-4 top-4 z-30 flex items-center justify-between gap-3 sm:left-7 sm:right-7 sm:top-5">
           <motion.button
             type="button"
@@ -494,23 +441,13 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* ======================================================
-            HERO
-            ====================================================== */}
-
-        <main className="flex min-h-0 flex-1 items-start justify-center overflow-hidden px-5 pb-3 pt-12 sm:px-8 sm:pb-4 sm:pt-14">
-
+        <main className="flex min-h-0 flex-1 items-start justify-center overflow-hidden px-5 pb-3 pt-16 sm:px-8 sm:pb-4 sm:pt-14">
           <div className="w-full max-w-[860px]">
-
-            {/* ==================================================
-                HERO LOGO
-                ================================================== */}
-
             <motion.div
               initial={{ opacity: 0, scale: 0.88, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              className="relative mx-auto mb-0 flex h-[195px] w-[540px] items-center justify-center sm:h-[220px] sm:w-[660px]"
+              className="relative mx-auto mb-0 flex h-[115px] w-full max-w-[340px] items-center justify-center sm:h-[220px] sm:w-[660px]"
             >
               <motion.div
                 animate={{
@@ -536,10 +473,6 @@ export default function Home() {
               </motion.div>
             </motion.div>
 
-            {/* ==================================================
-                LABEL
-                ================================================== */}
-
             <motion.div
               custom={0}
               variants={fadeUp}
@@ -548,17 +481,10 @@ export default function Home() {
               className="flex justify-center"
             >
               <div className="inline-flex items-center gap-2 rounded-full border border-[#0B5ED7]/15 bg-white/65 px-4 py-1.5 text-[10px] font-bold tracking-[0.14em] text-[#0B5ED7] shadow-sm backdrop-blur-md sm:text-[11px]">
-
                 <span className="h-1.5 w-1.5 rounded-full bg-[#0B5ED7]" />
-
                 PCAP EMAIL SECURITY ANALYSIS
-
               </div>
             </motion.div>
-
-            {/* ==================================================
-                HEADLINE
-                ================================================== */}
 
             <motion.h1
               custom={1}
@@ -572,10 +498,6 @@ export default function Home() {
               Into Security Intelligence.
             </motion.h1>
 
-            {/* ==================================================
-                DESCRIPTION
-                ================================================== */}
-
             <motion.p
               custom={2}
               variants={fadeUp}
@@ -588,10 +510,6 @@ export default function Home() {
               generate a clear security posture and forensic report.
             </motion.p>
 
-            {/* ==================================================
-                UPLOAD AREA
-                ================================================== */}
-
             <motion.div
               custom={3}
               variants={fadeUp}
@@ -599,7 +517,6 @@ export default function Home() {
               animate="visible"
               className="mx-auto mt-4 w-full max-w-[610px]"
             >
-
               <input
                 ref={fileInputRef}
                 type="file"
@@ -607,10 +524,6 @@ export default function Home() {
                 onChange={handleFileChange}
                 className="hidden"
               />
-
-              {/* =================================================
-                  INITIAL UPLOAD CARD
-                  ================================================= */}
 
               {!uploadResult && (
                 <div
@@ -623,20 +536,14 @@ export default function Home() {
                       : 'border-white/90'
                   }`}
                 >
-
                   <div className="rounded-[20px] border border-dashed border-[#0B5ED7]/20 px-5 py-4 sm:px-7 sm:py-5">
-
                     <div className="flex flex-col items-center justify-center">
-
-                      {/* Upload icon */}
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7] shadow-sm">
-
                         {dragActive ? (
                           <Upload className="h-5 w-5" />
                         ) : (
                           <FileUp className="h-5 w-5" />
                         )}
-
                       </div>
 
                       <h2 className="mt-2.5 text-base font-bold tracking-tight text-[#192837] sm:text-lg">
@@ -647,19 +554,7 @@ export default function Home() {
                         Upload a PCAP to inspect protocols, TLS security, findings, and posture.
                       </p>
 
-                      {/* =================================================
-                          BUTTONS
-
-                          Selected:
-                          [ START ANALYSIS ] [ CHANGE PCAP ]
-
-                          Not selected:
-                          [ CHOOSE PCAP ]
-                          ================================================= */}
-
                       <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
-
-                        {/* START ANALYSIS — LEFT / PURPLE */}
                         {file && (
                           <motion.button
                             type="button"
@@ -681,7 +576,6 @@ export default function Home() {
                           </motion.button>
                         )}
 
-                        {/* CHANGE / CHOOSE PCAP — RIGHT / WHITE */}
                         <motion.button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
@@ -692,11 +586,8 @@ export default function Home() {
                           }`}
                         >
                           <FileUp className="h-4 w-4" />
-
                           {file ? 'Change PCAP' : 'Choose PCAP'}
-
                         </motion.button>
-
                       </div>
 
                       <div className="mt-3.5 flex w-full items-center justify-center">
@@ -777,10 +668,6 @@ export default function Home() {
                 </motion.div>
               )}
 
-              {/* ==================================================
-                  ERROR
-                  ================================================== */}
-
               {errorMessage && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -791,10 +678,6 @@ export default function Home() {
                   {errorMessage}
                 </motion.div>
               )}
-
-              {/* ==================================================
-                  PROCESSING / RESULT
-                  ================================================== */}
 
               {uploadResult && (
                 <motion.div
