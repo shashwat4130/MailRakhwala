@@ -27,10 +27,11 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { SEVERITY_COLORS, STATUS_COLORS } from '../utils/severity';
 import { safeVal } from '../utils/formatters';
 
-const CHART_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#10b981', '#06b6d4', '#64748b'];
+const CHART_COLORS = ['#111111', '#262626', '#404040', '#525252', '#737373', '#a3a3a3', '#d4d4d4'];
 
 export default function SecurityAnalytics() {
   const { report, loading, error, reload, analysisId } = useAnalysis();
@@ -116,12 +117,10 @@ export default function SecurityAnalytics() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <BarChart3 className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Aggregating telemetry analytics...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="Security Analytics Telemetry"
+          message="Aggregating compliance posture, severity distributions, and metric waterfalls..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">

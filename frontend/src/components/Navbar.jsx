@@ -29,7 +29,7 @@ export default function Navbar() {
   return (
     <header className="h-16 border-b border-gray-800 bg-[#111827]/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-400">
+        <div className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-white">
           <Shield className="w-5 h-5" />
         </div>
         <div>

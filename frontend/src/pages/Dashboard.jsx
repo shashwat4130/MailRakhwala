@@ -18,7 +18,6 @@ import {
   Upload,
   Activity,
   X,
-  PieChart as PieChartIcon,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,24 +32,49 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useAnalysis } from '../hooks/useAnalysis';
-import {
-  downloadAnalysisJson,
-  downloadAnalysisPdf,
-} from '../services/api';
+import { downloadAnalysisPdf } from '../services/api';
 import { SEVERITY_COLORS, STATUS_COLORS } from '../utils/severity';
 import {
   isReportApplicable,
   getPostureScore,
   getAssessmentStatus,
   getApplicabilityReason,
+  getReportAnalytics,
+  CANONICAL_RULES_COUNT,
 } from '../utils/reportModel';
+import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
+
+// Lightweight count-up hook for smooth numeric reveals
+function useCountUp(endValue, duration = 650) {
+  const [count, setCount] = useState(0);
+  const target = typeof endValue === 'number' && !isNaN(endValue) ? endValue : 0;
+
+  useEffect(() => {
+    let startTimestamp = null;
+    let frameId;
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(Math.round(eased * target));
+      if (progress < 1) {
+        frameId = requestAnimationFrame(step);
+      }
+    };
+    frameId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameId);
+  }, [target, duration]);
+
+  return count;
+}
 
 const Card = ({ children, className = '', onClick }) => (
   <div
     onClick={onClick}
     className={[
-      'rounded-3xl border border-blue-100/80 bg-white shadow-[0_18px_55px_rgba(15,76,160,0.09)] ring-1 ring-blue-50/80',
-      onClick ? 'cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(15,76,160,0.16)]' : '',
+      'rounded-xl border border-[#E5E5E0] bg-white shadow-sm transition-all duration-200',
+      onClick ? 'cursor-pointer hover:border-[#D0D0CA] hover:shadow-md' : '',
       className,
     ].join(' ')}
   >
@@ -59,587 +83,201 @@ const Card = ({ children, className = '', onClick }) => (
 );
 
 const SectionEyebrow = ({ children }) => (
-  <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">
-    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+  <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-neutral-500">
+    <span className="h-1.5 w-1.5 rounded-full bg-[#111111]" />
     {children}
   </div>
 );
 
-const OverviewCard = ({ icon: Icon, label, value, detail, tone = 'blue', action }) => {
+const OverviewCard = ({ icon: Icon, label, value, detail, tone = 'charcoal', action, microVisual }) => {
   const tones = {
-    blue: 'bg-blue-50 text-blue-600',
-    violet: 'bg-blue-50 text-blue-600',
-    amber: 'bg-amber-50 text-amber-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    slate: 'bg-slate-100 text-slate-600',
+    charcoal: 'bg-[#111111] text-white',
+    amber: 'bg-amber-100 text-amber-900 border border-amber-300',
+    emerald: 'bg-emerald-100 text-emerald-900 border border-emerald-300',
+    rose: 'bg-rose-100 text-rose-900 border border-rose-300',
+    slate: 'bg-neutral-100 text-neutral-700 border border-neutral-300',
   };
 
   return (
-    <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-br from-white to-blue-50/60 p-4 transition-all duration-200 hover:border-blue-200 hover:bg-white hover:shadow-[0_10px_30px_rgba(37,99,235,0.08)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${tones[tone]}`}>
-          <Icon className="h-4.5 w-4.5" />
+    <div className="rounded-xl border border-[#E5E5E0] bg-white p-4 transition-all duration-200 hover:border-[#D0D0CA] hover:shadow-sm flex flex-col justify-between">
+      <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone] || tones.charcoal}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+          {action}
         </div>
-        {action}
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+          {label}
+        </p>
+        <p className="mt-0.5 truncate text-xl font-black tracking-tight text-[#111111] font-mono">
+          {value}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-[#666666]">{detail}</p>
       </div>
-      <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 truncate text-xl font-black tracking-tight text-slate-900">
-        {value}
-      </p>
-      <p className="mt-1 truncate text-xs text-slate-500">{detail}</p>
+      {microVisual && (
+        <div className="mt-3.5 pt-2.5 border-t border-[#F0F0EB]">
+          {microVisual}
+        </div>
+      )}
     </div>
   );
 };
 
-const ActionCard = ({ icon: Icon, title, description, buttonLabel, tone, onClick }) => {
-  const styles = {
-    violet: {
-      icon: 'bg-blue-50 text-blue-600 border-blue-100',
-      button: 'bg-gradient-to-r from-blue-700 to-cyan-600 text-white hover:from-blue-800 hover:to-cyan-700 shadow-blue-200',
-      line: 'group-hover:text-blue-600',
-    },
-    amber: {
-      icon: 'bg-amber-50 text-amber-600 border-amber-100',
-      button: 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-200',
-      line: 'group-hover:text-amber-600',
-    },
-    slate: {
-      icon: 'bg-slate-100 text-slate-700 border-slate-200',
-      button: 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200',
-      line: 'group-hover:text-slate-900',
-    },
-  };
-
-  const style = styles[tone];
-
+const ActionCard = ({ icon: Icon, title, description, buttonLabel, onClick }) => {
   return (
-    <Card className="group flex h-full flex-col p-6 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-[0_28px_80px_rgba(15,76,160,0.20)]" onClick={onClick}>
-      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border transition-all duration-300 group-hover:scale-110 group-hover:-rotate-3 ${style.icon}`}>
-        <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+    <Card className="flex h-full flex-col p-5 hover:border-[#C8C8C0]">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F7F7F5] border border-[#E5E5E0] text-[#111111]">
+        <Icon className="h-4.5 w-4.5" />
       </div>
-
-      <h3 className={`mt-5 text-lg font-black tracking-tight text-slate-900 transition-colors ${style.line}`}>
+      <h3 className="mt-4 text-base font-bold tracking-tight text-[#111111]">
         {title}
       </h3>
-
-      <p className="mt-2 min-h-[42px] text-sm leading-6 text-slate-500">
+      <p className="mt-1.5 min-h-[38px] text-xs leading-relaxed text-[#666666]">
         {description}
       </p>
-
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClick();
-        }}
-        className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-lg transition-all active:scale-[0.98] ${style.button}`}
-      >
-        {buttonLabel}
-        <ArrowRight className="h-4 w-4" />
-      </button>
+      <div className="mt-5 pt-3 border-t border-[#E5E5E0]">
+        <button
+          type="button"
+          onClick={onClick}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#111111] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#222222] active:scale-[0.98]"
+        >
+          {buttonLabel}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </Card>
   );
 };
 
+// Modal explaining the deterministic 100-point budget deductions
 const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
-  const baseScore =
-    typeof postureReport?.base_score === 'number' && Number.isFinite(postureReport.base_score)
-      ? postureReport.base_score
-      : 100;
-
-  const deductions = Array.isArray(postureReport?.deductions)
-    ? postureReport.deductions
-    : [];
-
-  const calculatedPenalty = deductions.reduce((sum, deduction) => {
-    const penalty = Number(deduction?.penalty);
-    return Number.isFinite(penalty) ? sum + penalty : sum;
-  }, 0);
-
-  const totalPenalty =
-    typeof postureReport?.total_penalty === 'number' && Number.isFinite(postureReport.total_penalty)
-      ? postureReport.total_penalty
-      : calculatedPenalty;
-
-  const finalScore =
-    typeof postureReport?.posture_score === 'number' && Number.isFinite(postureReport.posture_score)
-      ? postureReport.posture_score
-      : typeof postureReport?.score === 'number' && Number.isFinite(postureReport.score)
-      ? postureReport.score
-      : null;
-
-  const severity = String(postureReport?.severity ?? '').toUpperCase();
-  const scoreStatus =
-    finalScore === null
-      ? 'Not Assessed'
-      : finalScore >= 85
-      ? 'Strong posture'
-      : finalScore >= 60
-      ? 'Needs attention'
-      : 'Review required';
-  const severityLabel = severity ? severity.charAt(0) + severity.slice(1).toLowerCase() : scoreStatus;
-
-  const pointsRemaining = finalScore !== null ? Math.max(0, Math.min(100, finalScore)) : 0;
-  const scoreExplanation =
-    deductions.length === 0
-      ? `No verified security issue reduced the starting score of ${baseScore}.`
-      : `MailRakhwala started at ${baseScore} points and removed ${totalPenalty} points for verified security issues found in the capture.`;
-
-  const simpleExplanation = (deduction) => {
-    const property = String(deduction?.observed_property || '').toLowerCase();
-    const value = String(deduction?.observed_value || '').toUpperCase();
-
-    if (property === 'starttls.state' && value.includes('PLAINTEXT_CONTINUATION')) {
-      return 'The mail server offered STARTTLS, but this captured connection did not switch to encrypted TLS. Mail traffic therefore remained visible in plaintext.';
-    }
-    if (property === 'transport.security' && value.startsWith('PLAINTEXT_')) {
-      return 'Email traffic was captured without TLS encryption. This means the email data was not protected while travelling across the network.';
-    }
-    if (property === 'tls.version') {
-      return `The captured connection used ${deduction?.observed_value || 'an unsupported TLS version'}, which does not meet the required security level.`;
-    }
-    if (property === 'tls.cipher_suite') {
-      return `The captured connection used the ${deduction?.observed_value || 'observed'} encryption method, which does not meet the configured cipher security requirement.`;
-    }
-    if (property === 'kex.has_forward_secrecy' && value === 'FALSE') {
-      return 'The connection did not use forward secrecy, so a recorded session has weaker protection if long-term keys are exposed later.';
-    }
-    if (property === 'cert.validity') {
-      return `The server certificate was ${deduction?.observed_value || 'not in a valid state'} when it was observed in the capture.`;
-    }
-    if (property === 'cert.public_key_bits') {
-      return `The certificate used a ${deduction?.observed_value || 'smaller-than-required'}-bit public key, below the configured minimum.`;
-    }
-    if (property === 'identity.sni_vs_san') {
-      return 'The server name observed during the connection did not match the identity presented by the certificate.';
-    }
-
-    return deduction?.description || 'A verified security issue caused this deduction.';
-  };
-
-  const readableEvidence = (property, value) => {
-    const raw = String(value ?? 'Unavailable');
-    const upper = raw.toUpperCase();
-
-    if (property === 'starttls.state' && upper.includes('PLAINTEXT_CONTINUATION')) {
-      return 'STARTTLS advertised → connection stayed unencrypted';
-    }
-    if (property === 'transport.security' && upper.startsWith('PLAINTEXT_')) {
-      return 'Email traffic was observed without TLS';
-    }
-    if (upper === 'TRUE') return 'Yes';
-    if (upper === 'FALSE') return 'No';
-    if (upper === 'UNAVAILABLE') return 'Not available in the capture';
-    return raw;
-  };
-
-  useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleEscape);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [onClose]);
+  const deductions = postureReport?.applied_deductions || [];
+  const baseScore = postureReport?.base_score ?? 100;
+  const totalPenalty = postureReport?.total_penalty ?? 0;
+  const finalScore = postureReport?.score ?? null;
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="score-analysis-title"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="dashboard-modal-enter flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-[0_30px_100px_rgba(15,76,160,0.24)]">
-        <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-7">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#E5E5E0] bg-white p-6 sm:p-7 shadow-xl">
+        <div className="flex items-start justify-between border-b border-[#E5E5E0] pb-4">
           <div>
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">
-              <BarChart3 className="h-4 w-4" />
-              Score explanation
-            </div>
-            <h2 id="score-analysis-title" className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-              {finalScore !== null ? `Why did I get ${finalScore}/100?` : 'Posture Score Assessment'}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              See what MailRakhwala found and how many points each issue removed.
+            <h3 className="text-lg font-bold text-[#111111]">
+              Deterministic Posture Score Calculation
+            </h3>
+            <p className="mt-1 text-xs text-[#666666]">
+              Calibrated 100-point budget evaluated across 19 RFC compliance rules.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close score analysis"
-            className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-[#F7F7F5] hover:text-[#111111]"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto p-5 sm:p-7">
-          <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-            <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-full bg-[#061A3A] text-white shadow-[0_12px_35px_rgba(6,26,58,0.22)]">
-              <span className={`font-black leading-none ${finalScore !== null ? 'text-3xl' : 'text-sm text-center px-2'}`}>
-                {finalScore !== null ? finalScore : 'Not Assessed'}
-              </span>
-              {finalScore !== null && (
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider text-blue-200">/ 100</span>
-              )}
+        <div className="mt-5 space-y-3">
+          <div className="rounded-xl border border-[#E5E5E0] bg-[#F7F7F5] p-4 flex items-center justify-between font-mono text-xs">
+            <div>
+              <span className="text-neutral-500 font-bold uppercase">Starting Budget:</span>{' '}
+              <span className="font-black text-[#111111]">{baseScore} pts</span>
             </div>
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">Your security score</p>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <h3 className="text-xl font-black text-slate-900">{scoreStatus}</h3>
-                {severity && (
-                  <span className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700">
-                    {severityLabel} risk
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {scoreExplanation}
-              </p>
+            <div>
+              <span className="text-rose-600 font-bold uppercase">Total Deductions:</span>{' '}
+              <span className="font-black text-rose-600">−{totalPenalty} pts</span>
+            </div>
+            <div>
+              <span className="text-neutral-500 font-bold uppercase">Final Posture:</span>{' '}
+              <span className="font-black text-[#111111]">{finalScore}/100</span>
             </div>
           </div>
 
-          <div className="mt-7">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">Why points were removed</p>
-                <h3 className="mt-1 text-lg font-black text-slate-950">Security issues found</h3>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total deduction</p>
-                <p className="text-lg font-black text-rose-600">−{totalPenalty}</p>
-              </div>
-            </div>
-
+          <div className="mt-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">
+              Verified Deductions ({deductions.length})
+            </h4>
             {deductions.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
-                <div className="flex gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                  <div>
-                    <p className="font-bold text-emerald-900">No verified deductions were applied.</p>
-                    <p className="mt-1 text-sm leading-6 text-emerald-800/80">
-                      The posture engine did not find an evidence-backed non-compliant condition that reduced the score.
-                    </p>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-[#E5E5E0] p-4 text-center text-xs text-neutral-500">
+                No penalty deductions applied. Perfect 100/100 baseline.
               </div>
             ) : (
-              <div className="mt-4 space-y-3">
-                {deductions.map((deduction, index) => {
-                  const penalty = Number(deduction?.penalty);
-                  const observedProperty = deduction?.observed_property;
-                  const observedValue = deduction?.observed_value;
-                  return (
-                    <div
-                      key={deduction?.finding_id || `${deduction?.rule_id || 'deduction'}-${index}`}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-[0_10px_30px_rgba(15,76,160,0.08)]"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
-                          <ShieldAlert className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <h4 className="font-bold text-slate-900">
-                                {deduction?.title || deduction?.rule_id || 'Security deduction'}
-                              </h4>
-                              <p className="mt-1 text-xs font-semibold text-slate-500">
-                                This issue reduced your score by {Number.isFinite(penalty) ? penalty : 0} point{Number.isFinite(penalty) && penalty === 1 ? '' : 's'}.
-                              </p>
-                              {deduction?.rule_id && (
-                                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                  Security rule: {deduction.rule_id}
-                                </p>
-                              )}
-                            </div>
-                            <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700">
-                              −{Number.isFinite(penalty) ? penalty : 0}
-                            </span>
-                          </div>
-                          <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/70 p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-700">What happened?</p>
-                            <p className="mt-1 text-sm leading-6 text-slate-700">
-                              {simpleExplanation(deduction)}
-                            </p>
-                          </div>
-                          {(observedProperty || observedValue !== undefined) && (
-                            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">What was detected</p>
-                              <div className="mt-3 space-y-2">
-                                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                                  <span className="shrink-0 text-xs font-semibold text-slate-500">{observedProperty || 'Observed value'}</span>
-                                  <span className="min-w-0 break-words text-left text-xs font-semibold leading-5 text-slate-800 sm:max-w-[65%] sm:text-right">{readableEvidence(observedProperty, observedValue)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+              <div className="space-y-2">
+                {deductions.map((ded, idx) => (
+                  <div
+                    key={ded.rule_id || idx}
+                    className="flex items-start justify-between rounded-xl border border-[#E5E5E0] bg-white p-3.5"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[#111111]">
+                          {ded.rule_id}
+                        </span>
+                        <span className="rounded bg-rose-50 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+                          {ded.rule_severity || 'HIGH'}
+                        </span>
                       </div>
+                      <p className="mt-1 text-xs text-[#666666]">
+                        {ded.title || 'Non-compliant security condition'}
+                      </p>
                     </div>
-                  );
-                })}
+                    <span className="font-mono text-xs font-black text-rose-600 shrink-0">
+                      −{ded.penalty} pts
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+        </div>
 
-          <div className="mt-6 rounded-2xl border border-blue-100 bg-gradient-to-r from-slate-50 to-blue-50/60 p-5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600">Your score, simply explained</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Started with</p>
-                <p className="mt-1 text-2xl font-black text-slate-900">{baseScore}</p>
-                <p className="text-xs text-slate-500">points</p>
-              </div>
-              <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-rose-500">Points lost</p>
-                <p className="mt-1 text-2xl font-black text-rose-700">−{totalPenalty}</p>
-                <p className="text-xs text-rose-600/80">from verified issues</p>
-              </div>
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-blue-600">Your score</p>
-                <p className="mt-1 text-2xl font-black text-blue-900">{pointsRemaining}/100</p>
-                <p className="text-xs text-blue-700/80">{scoreStatus}</p>
-              </div>
-            </div>
-            <div className="mt-4 rounded-xl bg-white px-4 py-3 ring-1 ring-blue-100">
-              <p className="text-sm font-semibold text-slate-700">
-                {finalScore !== null ? (
-                  <>
-                    {baseScore} starting points − {totalPenalty} points lost ={' '}
-                    <span className="font-black text-blue-700">{finalScore}/100</span>
-                  </>
-                ) : (
-                  <span className="font-bold text-slate-600">Posture score was not evaluated for this session.</span>
-                )}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Only evidence-backed non-compliant conditions are included in the deduction.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
-              Close
-            </button>
-            <button type="button" onClick={onViewFindings} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700">
-              View detailed findings
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#E5E5E0] pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-[#E5E5E0] bg-white px-4 py-2 text-xs font-bold text-[#111111] hover:bg-[#F7F7F5]"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onViewFindings}
+            className="rounded-lg bg-[#111111] px-4 py-2 text-xs font-bold text-white hover:bg-[#222222]"
+          >
+            Inspect Findings
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-function Dashboard() {
+const CustomSeverityTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="rounded-lg border border-[#282828] bg-[#111111] px-3 py-2 text-xs text-white shadow-xl select-none">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: data.color }} />
+          <span className="font-semibold text-neutral-200">{data.label} Severity</span>
+        </div>
+        <div className="mt-1 font-mono text-[13px] font-bold text-white">
+          {data.count} {data.count === 1 ? 'finding' : 'findings'}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+export default function Dashboard() {
   const navigate = useNavigate();
   const { report, loading, error, reload, analysisId, processingStatus } = useAnalysis();
   const [scoreAnalysisOpen, setScoreAnalysisOpen] = useState(false);
   const [exportError, setExportError] = useState(null);
 
-  const findings = useMemo(
-    () => (Array.isArray(report?.compliance_findings) ? report.compliance_findings : []),
-    [report]
-  );
-
-  const deductions = useMemo(
-    () => (Array.isArray(report?.posture_report?.deductions) ? report.posture_report.deductions : []),
-    [report]
-  );
-
-  const severityData = useMemo(() => {
-    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
-    findings.forEach((f) => {
-      const sev = f.severity?.toUpperCase() || 'INFO';
-      if (counts[sev] !== undefined) counts[sev]++;
-      else counts.INFO++;
-    });
-    return Object.entries(counts)
-      .filter(([_, count]) => count > 0)
-      .map(([name, count]) => ({
-        name,
-        count,
-        color: SEVERITY_COLORS[name] || '#64748b',
-      }));
-  }, [findings]);
-
-  const statusData = useMemo(() => {
-    const counts = { COMPLIANT: 0, NON_COMPLIANT: 0, UNKNOWN: 0, NOT_APPLICABLE: 0 };
-    findings.forEach((f) => {
-      const st = f.status || 'UNKNOWN';
-      if (counts[st] !== undefined) counts[st]++;
-      else counts.UNKNOWN++;
-    });
-    return Object.entries(counts)
-      .filter(([_, count]) => count > 0)
-      .map(([name, count]) => ({
-        name: name.replace(/_/g, ' '),
-        rawKey: name,
-        count,
-        color: STATUS_COLORS[name] || '#94a3b8',
-      }));
-  }, [findings]);
-
-  const deductionData = useMemo(() => {
-    return deductions.map((d) => ({
-      name: d.rule_id,
-      penalty: d.penalty,
-      title: d.title,
-    }));
-  }, [deductions]);
-
-  const effectiveId = analysisId;
-
-  const handleDownloadFullReport = async () => {
-    try {
-      setExportError(null);
-      await downloadAnalysisJson(effectiveId);
-    } catch (err) {
-      console.error('Failed to download full report:', err);
-      setExportError(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'The full report could not be downloaded.'
-      );
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    try {
-      setExportError(null);
-      await downloadAnalysisPdf(effectiveId);
-    } catch (err) {
-      console.error('Failed to download PDF report:', err);
-      setExportError(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'The PDF report could not be downloaded.'
-      );
-    }
-  };
-
-  if (loading && !report) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white p-6">
-        <div className="flex flex-col items-center gap-4 text-center max-w-md">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm">
-            <RefreshCw className="h-6 w-6 animate-spin" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-900">
-              {processingStatus || 'Analyzing Network Capture...'}
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Evaluating TCP streams, TLS handshakes, PKI certificates, and deterministic RFC compliance baselines.
-            </p>
-          </div>
-          <div className="w-48 h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
-            <div className="h-full bg-blue-600 rounded-full animate-pulse w-3/4" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!effectiveId) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white p-6">
-        <Card className="w-full max-w-lg p-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <ShieldAlert className="h-7 w-7" />
-          </div>
-          <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900">
-            No active analysis
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            Upload and process a PCAP capture to generate the security dashboard.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="mt-7 inline-flex items-center gap-2 rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
-          >
-            <Upload className="h-4 w-4" />
-            Capture Ingestion
-          </button>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white p-6">
-        <Card className="w-full max-w-lg p-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
-            <AlertTriangle className="h-7 w-7" />
-          </div>
-          <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900">
-            Report unavailable
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            {error}
-          </p>
-          <div className="mt-7 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => reload()}
-              className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-200 transition hover:bg-blue-700"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Retry Report
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
-            >
-              Return to Capture Ingestion
-            </button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!report) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white p-6">
-        <div className="flex flex-col items-center gap-4 text-center max-w-md">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm">
-            <RefreshCw className="h-6 w-6 animate-spin" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-900">
-              {processingStatus || 'Loading analysis report...'}
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Fetching cryptographic security telemetry and protocol assessments...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const totalStreams = report?.session?.total_streams ?? 0;
-
-  const detectedProtocol =
-    report?.protocol_summary?.detected_protocol || 'Not detected';
-
-  const hasTls = Boolean(report?.protocol_summary?.has_tls);
+  const effectiveId = analysisId || (typeof window !== 'undefined' ? (localStorage.getItem('active_analysis_id') || localStorage.getItem('analysis_id')) : null);
 
   const isApplicable = isReportApplicable(report);
   const assessmentStatus = getAssessmentStatus(report);
@@ -647,465 +285,659 @@ function Dashboard() {
     getApplicabilityReason(report) ||
     'No supported email protocol/security assessment was observed in this capture.';
 
-  const postureScore = getPostureScore(report);
+  const rawPostureScore = getPostureScore(report);
+  const animatedScore = useCountUp(rawPostureScore, 650);
 
-  const riskClass =
-    report?.risk_classification?.predicted_class ||
-    null;
+  const analytics = useMemo(() => getReportAnalytics(report), [report]);
+  const findings = useMemo(() => {
+    return report?.compliance_findings || report?.findings || [];
+  }, [report]);
 
-  const anomalyValue =
-    typeof report?.anomaly_detection?.is_anomalous === 'boolean'
-      ? report.anomaly_detection.is_anomalous
-      : null;
+  const severityCounts = analytics.severityCounts;
+  const severityData = analytics.severityData;
+  const statusData = analytics.statusData;
+  const categoryData = analytics.categoryData;
+  const seriousIssues = severityCounts.CRITICAL + severityCounts.HIGH;
 
-  const seriousIssues = findings.filter((finding) => {
-    const severity = String(finding?.severity ?? '').trim().toUpperCase();
-    return severity === 'CRITICAL' || severity === 'HIGH';
-  }).length;
+  const deductionData = useMemo(() => {
+    const applied = report?.posture_report?.applied_deductions || report?.posture_report?.deductions || [];
+    return applied.map((d) => ({
+      name: d.rule_id || d.upstream_rule_id || 'Rule',
+      title: d.title || 'Security Deduction',
+      penalty: d.penalty || 0,
+    }));
+  }, [report]);
 
-  const filename = report?.session?.filename || 'Capture file';
-  const fileSizeBytes = report?.session?.filesize_bytes;
-  const fileSize =
-    typeof fileSizeBytes === 'number'
-      ? `${(fileSizeBytes / 1024).toFixed(1)} KB`
-      : 'Not available';
+  const handleDownloadPdf = async () => {
+    if (!effectiveId) return;
+    try {
+      setExportError(null);
+      await downloadAnalysisPdf(effectiveId);
+    } catch (err) {
+      console.error('Failed to download PDF report:', err);
+      setExportError(
+        err?.response?.data?.detail || err?.message || 'The PDF report could not be downloaded.'
+      );
+    }
+  };
 
-  const standardChecked =
-    report?.posture_report?.engine_version
-      ? `RFC Conformance v${report.posture_report.engine_version}`
-      : 'RFC 8314 / RFC 3207';
+  // Loading state
+  if (loading && !report) {
+    return (
+      <LoadingState
+        title={processingStatus || 'Analyzing Network Capture...'}
+        message="Evaluating TCP streams, TLS handshakes, PKI certificates, and deterministic RFC compliance baselines."
+      />
+    );
+  }
 
-  const scoreRing =
-    postureScore === null
-      ? 0
-      : Math.max(0, Math.min(100, postureScore));
+  // Graceful No-Capture State
+  if (!effectiveId || !report) {
+    return (
+      <EmptyAnalysisState
+        title="START ANALYSIS"
+        description="Upload a PCAP to begin email security analysis."
+        buttonText="Start Analysis"
+        supportingText="Mail Rakhwala will reconstruct email streams, audit TLS/PKI, evaluate security rules, and generate evidence-linked intelligence."
+        featureBadge="Dashboard Telemetry"
+      />
+    );
+  }
 
-  const scoreStatus =
-    !isApplicable
-      ? 'Assessment Not Applicable'
-      : postureScore === null
-        ? 'Not Assessed'
-        : postureScore >= 85
-          ? 'Strong posture'
-          : postureScore >= 60
-            ? 'Needs attention'
-            : 'Review required';
-
-  const scoreMessage =
-    !isApplicable
-      ? applicabilityReason
-      : postureScore === null
-        ? 'No observable email/TLS traffic was available for cryptographic assessment.'
-        : 'Authoritative posture score returned by the security analysis backend.';
-
-  const riskDisplay = !isApplicable ? 'Not applicable' : (riskClass || 'Not available');
-  const anomalyDisplay = !isApplicable
-    ? 'Not applicable'
-    : anomalyValue === null
-      ? 'Not available'
-      : anomalyValue
-        ? 'Unusual activity detected'
-        : 'No anomaly detected';
-
-  const protocolDisplay = isApplicable
-    ? detectedProtocol
-    : (detectedProtocol || 'Non-Email');
-
-  const reportCardDescription =
-    `${filename} · ${fileSize} · ${totalStreams} stream${totalStreams === 1 ? '' : 's'} inspected.`;
-
-  return (
-    <div className="dashboard-page relative min-h-full overflow-hidden bg-gradient-to-br from-white via-blue-50/30 to-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute -left-32 top-16 h-96 w-96 rounded-full bg-blue-200/25 blur-3xl" />
-      <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-cyan-100/30 blur-3xl" />
-      <div className="pointer-events-none absolute -right-40 bottom-10 h-96 w-96 rounded-full bg-cyan-200/20 blur-3xl" />
-
-      <div className="relative mx-auto max-w-[1280px] space-y-6">
-        <header className="flex flex-col gap-5 border-b border-blue-100/80 pb-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <SectionEyebrow>Security command center</SectionEyebrow>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">
-                Security Overview
-              </h1>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Analysis complete
-              </span>
-            </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              A clear view of what was captured, what the backend assessed, and where to investigate next.
-            </p>
+  // Error State
+  if (error) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center bg-[#F7F7F5] p-6">
+        <div className="w-full max-w-lg rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600 mb-4">
+            <AlertTriangle className="h-6 w-6" />
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                Capture
-              </p>
-              <p className="mt-0.5 max-w-[260px] truncate text-sm font-bold text-slate-800">
-                {filename}
-              </p>
-            </div>
-
+          <h2 className="text-lg font-bold text-[#111111]">Report Unavailable</h2>
+          <p className="mt-2 text-xs text-[#666666]">{error}</p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => reload()}
+              className="rounded-lg bg-[#111111] px-4 py-2 text-xs font-bold text-white hover:bg-[#222222]"
+            >
+              Retry
+            </button>
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-blue-700 shadow-[0_10px_30px_rgba(37,99,235,0.10)] transition hover:border-blue-300 hover:bg-blue-50 hover:-translate-y-0.5"
+              className="rounded-lg border border-[#E5E5E0] bg-white px-4 py-2 text-xs font-bold text-[#111111] hover:bg-[#F7F7F5]"
             >
-              <Upload className="h-4 w-4" />
-              New capture
+              Upload PCAP
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const totalStreams = report?.session?.total_streams ?? 0;
+  const detectedProtocol = report?.protocol_summary?.detected_protocol || 'Not detected';
+  const riskClass = report?.risk_classification?.predicted_class || null;
+  const anomalyValue = typeof report?.anomaly_detection?.is_anomalous === 'boolean'
+    ? report.anomaly_detection.is_anomalous
+    : null;
+
+  const filename = report?.session?.filename || 'Capture file';
+  const fileSizeBytes = report?.session?.filesize_bytes;
+  const fileSize = typeof fileSizeBytes === 'number' ? `${(fileSizeBytes / 1024).toFixed(1)} KB` : 'N/A';
+  const standardChecked = report?.posture_report?.engine_version
+    ? `RFC Conformance v${report.posture_report.engine_version}`
+    : 'RFC 8314 / RFC 3207';
+
+  const postureSeverity = report?.posture_report?.severity || 'HIGH';
+  const scoreRingPercent = rawPostureScore === null ? 0 : Math.max(0, Math.min(100, rawPostureScore));
+
+  const severityStrokeColor =
+    postureSeverity === 'CRITICAL'
+      ? '#DC2626'
+      : postureSeverity === 'HIGH'
+      ? '#EA580C'
+      : postureSeverity === 'MEDIUM'
+      ? '#D97706'
+      : '#16A34A';
+
+  const scoreStatus = !isApplicable
+    ? 'Assessment Not Applicable'
+    : rawPostureScore === null
+    ? 'Not Assessed'
+    : rawPostureScore >= 80
+    ? 'Strong Posture'
+    : rawPostureScore >= 60
+    ? 'Needs Attention'
+    : 'Review Required';
+
+  return (
+    <div className="relative min-h-screen bg-[#F7F7F5] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1240px] space-y-6">
+        {/* Header */}
+        <header className="flex flex-col gap-4 border-b border-[#E5E5E0] pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <SectionEyebrow>Passive Email Forensic Console</SectionEyebrow>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#111111]">
+                Security Overview
+              </h1>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                <CheckCircle2 className="h-3 w-3" />
+                Analysis Complete
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[#666666]">
+              Deterministic RFC verification, verified deductions, and calibrated cryptographic intelligence.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg border border-[#E5E5E0] bg-white px-3.5 py-2 shadow-sm">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">Capture File</p>
+              <p className="mt-0.5 max-w-[220px] truncate text-xs font-bold text-[#111111]">{filename}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-[#222222] transition"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              New Capture
             </button>
           </div>
         </header>
 
+        {/* Non-Applicable Alert */}
         {!isApplicable && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <h3 className="text-sm font-bold text-amber-900">
-                Assessment Not Applicable
-              </h3>
-              <p className="mt-0.5 text-xs text-amber-800 leading-relaxed">
-                {applicabilityReason}
-              </p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900">Assessment Not Applicable</h3>
+              <p className="mt-0.5 text-xs text-amber-800 leading-relaxed">{applicabilityReason}</p>
             </div>
           </div>
         )}
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-black text-slate-900">
-                Security overview
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                The four things to understand first.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <OverviewCard
-              icon={ShieldCheck}
-              label="Posture"
-              value={!isApplicable ? 'Not Applicable' : (postureScore === null ? 'Not Assessed' : `${postureScore}/100`)}
-              detail={!isApplicable ? 'Assessment Not Applicable' : scoreStatus}
-              tone={!isApplicable ? 'slate' : (postureScore === null ? 'slate' : 'blue')}
-            />
-            <OverviewCard
-              icon={AlertTriangle}
-              label="Findings"
-              value={findings.length}
-              detail={`${seriousIssues} serious issue${seriousIssues === 1 ? '' : 's'}`}
-              tone={findings.length > 0 ? 'amber' : 'emerald'}
-            />
-            <OverviewCard
-              icon={Activity}
-              label="Risk / anomaly"
-              value={riskDisplay}
-              detail={anomalyDisplay}
-              tone={riskClass && isApplicable ? 'blue' : 'slate'}
-            />
-            <OverviewCard
-              icon={Mail}
-              label="Protocol"
-              value={protocolDisplay}
-              detail={`${totalStreams} total stream${totalStreams === 1 ? '' : 's'}`}
-              tone={isApplicable ? 'emerald' : 'slate'}
-            />
-          </div>
+        {/* Overview KPIs with Analytical Micro-Visuals */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <OverviewCard
+            icon={ShieldCheck}
+            label="Cryptographic Posture"
+            value={!isApplicable ? 'N/A' : rawPostureScore === null ? 'Not Assessed' : `${animatedScore}/100`}
+            detail={!isApplicable ? 'Not Applicable' : `${scoreStatus} · ${postureSeverity}`}
+            tone={!isApplicable ? 'slate' : rawPostureScore >= 80 ? 'emerald' : rawPostureScore >= 60 ? 'amber' : 'rose'}
+            microVisual={
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                  <span>Score Budget</span>
+                  <span className="font-bold text-[#111111]">{animatedScore}/100</span>
+                </div>
+                <div className="h-1.5 w-full bg-[#E5E5E0] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, rawPostureScore ?? 0))}%`,
+                      backgroundColor: severityStrokeColor,
+                    }}
+                  />
+                </div>
+              </div>
+            }
+          />
+          <OverviewCard
+            icon={AlertTriangle}
+            label="Finding Instances"
+            value={`${analytics.totalFindings} Finding Instances`}
+            detail={`${analytics.uniqueViolatedRulesCount} Unique Violated Rules`}
+            tone={seriousIssues > 0 ? 'amber' : 'emerald'}
+            microVisual={
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                  <span>Severity Spread</span>
+                  <span className="font-bold text-[#111111]">{analytics.totalFindings} findings</span>
+                </div>
+                <div className="flex h-1.5 w-full gap-0.5 rounded-full overflow-hidden bg-[#F0F0EB]">
+                  <div style={{ flex: severityCounts.CRITICAL || 0.05 }} className="bg-[#DC2626] rounded-xs" title={`Critical: ${severityCounts.CRITICAL}`} />
+                  <div style={{ flex: severityCounts.HIGH || 0.05 }} className="bg-[#EA580C] rounded-xs" title={`High: ${severityCounts.HIGH}`} />
+                  <div style={{ flex: severityCounts.MEDIUM || 0.05 }} className="bg-[#D97706] rounded-xs" title={`Medium: ${severityCounts.MEDIUM}`} />
+                  <div style={{ flex: severityCounts.LOW || 0.05 }} className="bg-[#16A34A] rounded-xs" title={`Low: ${severityCounts.LOW}`} />
+                  {severityCounts.INFORMATIONAL > 0 && (
+                    <div style={{ flex: severityCounts.INFORMATIONAL }} className="bg-[#64748B] rounded-xs" title={`Informational: ${severityCounts.INFORMATIONAL}`} />
+                  )}
+                </div>
+              </div>
+            }
+          />
+          <OverviewCard
+            icon={Activity}
+            label="Statistical Risk (ML)"
+            value={!isApplicable ? 'N/A' : (riskClass || 'Evaluated')}
+            detail={!isApplicable ? 'Not Applicable' : anomalyValue ? 'Anomaly Flagged' : 'Normal Pattern'}
+            tone={riskClass === 'CRITICAL' ? 'rose' : riskClass === 'HIGH' ? 'amber' : 'slate'}
+            microVisual={
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                  <span>Model Output</span>
+                  <span className="font-bold text-[#111111]">{riskClass || 'EVAL'}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {['LOW', 'MED', 'HIGH', 'CRIT'].map((lvl, idx) => {
+                    const fullLvl = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'][idx];
+                    const isActive = (riskClass || '').toUpperCase() === fullLvl;
+                    return (
+                      <div
+                        key={lvl}
+                        className={`text-center py-0.5 text-[8px] font-mono font-bold rounded ${
+                          isActive
+                            ? 'bg-[#111111] text-white'
+                            : 'bg-[#F0F0EB] text-neutral-400'
+                        }`}
+                      >
+                        {lvl}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            }
+          />
+          <OverviewCard
+            icon={Mail}
+            label="Stream Dissection"
+            value={`${totalStreams} Streams`}
+            detail={`${detectedProtocol} · ${fileSize}`}
+            tone="charcoal"
+            microVisual={
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                  <span>Reassembly</span>
+                  <span className="font-bold text-emerald-700">Active</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-mono font-bold text-[#111111]">{detectedProtocol}</span>
+                  <span className="text-[10px] text-neutral-400 ml-auto font-mono">{fileSize}</span>
+                </div>
+              </div>
+            }
+          />
         </section>
 
-        <Card className="overflow-hidden ring-1 ring-blue-100/70 shadow-[0_25px_80px_rgba(15,76,160,0.10)]">
+        {/* CENTERPIECE: Cryptographic Posture Card (Dark Charcoal #111111) */}
+        <div className="overflow-hidden rounded-2xl border border-[#222222] bg-[#111111] text-white shadow-md">
           <div className="grid lg:grid-cols-[1.1fr_1.9fr]">
-            <div className="relative overflow-hidden bg-gradient-to-br from-[#061A3A] via-[#0B4EA2] to-[#087EA4] p-7 text-white sm:p-8">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/15 blur-3xl" />
-              <div className="pointer-events-none absolute right-20 bottom-0 h-32 w-32 rounded-full bg-blue-400/10 blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-cyan-300/15 blur-3xl" />
+            {/* Left Score Centerpiece */}
+            <div className="relative p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-[#222222] technical-grid-pattern">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">
+                    Authoritative Security Engine
+                  </p>
+                  <h2 className="mt-1 text-base font-bold text-white">
+                    Cryptographic Posture
+                  </h2>
+                </div>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#222222] text-neutral-300">
+                  <LockKeyhole className="h-4 w-4" />
+                </div>
+              </div>
 
-              <div className="relative">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-200">
-                      Cryptographic posture
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-blue-100">
-                      Overall assessment
-                    </p>
-                  </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-                    <LockKeyhole className="h-5 w-5" />
+              {/* Score Ring */}
+              <div className="mt-7 flex items-center gap-6">
+                <div className="relative flex h-28 w-28 shrink-0 items-center justify-center">
+                  <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="transparent"
+                      stroke="#222222"
+                      strokeWidth="8"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="transparent"
+                      stroke={severityStrokeColor}
+                      strokeWidth="8"
+                      strokeDasharray={2 * Math.PI * 40}
+                      strokeDashoffset={2 * Math.PI * 40 * (1 - scoreRingPercent / 100)}
+                      strokeLinecap="round"
+                      className="transition-all duration-700 ease-out"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-3xl font-black tracking-tight text-white font-mono">
+                      {animatedScore}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
+                      / 100
+                    </span>
                   </div>
                 </div>
 
-                <div className="mt-8 flex items-center gap-6">
-                  <div
-                    className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full"
+                <div className="min-w-0">
+                  <span
+                    className="inline-flex rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider font-mono"
                     style={{
-                      background: `conic-gradient(#ffffff ${scoreRing}%, rgba(255,255,255,0.18) ${scoreRing}% 100%)`,
+                      backgroundColor: `${severityStrokeColor}20`,
+                      color: severityStrokeColor,
+                      border: `1px solid ${severityStrokeColor}40`,
                     }}
                   >
-                    <div className="flex h-[106px] w-[106px] flex-col items-center justify-center rounded-full bg-[#04183D] shadow-inner">
-                      {postureScore === null ? (
-                        <span className="px-2 text-center text-xs font-black leading-tight">
-                          {!isApplicable ? 'Not Applicable' : 'Not Assessed'}
-                        </span>
-                      ) : (
-                        <>
-                          <span className="text-3xl font-black tracking-tight">
-                            {postureScore}
-                          </span>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-200">
-                            out of 100
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="min-w-0">
-                    <span className="inline-flex rounded-full bg-white/12 px-3 py-1 text-xs font-bold text-white ring-1 ring-white/15">
-                      {scoreStatus}
-                    </span>
-                    <p className="mt-3 text-sm leading-6 text-blue-100">
-                      {scoreMessage}
-                    </p>
-                  </div>
+                    {postureSeverity} RISK
+                  </span>
+                  <p className="mt-2 text-xs text-neutral-300 leading-relaxed">
+                    {scoreStatus} evaluated against deterministic RFC rules.
+                  </p>
                 </div>
+              </div>
 
+              <div className="mt-6 pt-5 border-t border-[#222222] flex flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => setScoreAnalysisOpen(true)}
-                  disabled={postureScore === null || !isApplicable}
-                  className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-extrabold text-[#061A3A] shadow-[0_10px_30px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={rawPostureScore === null || !isApplicable}
+                  className="inline-flex items-center justify-between rounded-lg bg-white px-4 py-2 text-xs font-bold text-[#111111] hover:bg-[#EAEAEA] transition"
                 >
-                  <BarChart3 className="h-4 w-4" />
-                  How is this score calculated?
-                  <ArrowRight className="h-4 w-4" />
+                  <span className="flex items-center gap-2">
+                    <BarChart3 className="h-3.5 w-3.5" />
+                    How is this score calculated?
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </button>
-                <p className="mt-2 text-xs text-blue-100/80">
-                  See every issue that added or removed points.
+                <p className="text-[10px] text-neutral-400">
+                  Base score 100 minus verified deductions across 19 rules.
                 </p>
               </div>
             </div>
 
-            <div className="p-7 sm:p-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-600">
-                    Capture intelligence
-                  </p>
-                  <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">
-                    What the analysis found
-                  </h2>
+            {/* Right Side: What the Analysis Found */}
+            <div className="p-6 sm:p-8 bg-[#161616] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+                      Capture Telemetry
+                    </p>
+                    <h3 className="mt-0.5 text-sm font-bold text-white">
+                      Verified Findings &amp; Protocol Boundaries
+                    </h3>
+                  </div>
+                  <Sparkles className="h-4 w-4 text-neutral-400" />
                 </div>
-                <Sparkles className="h-5 w-5 text-blue-400" />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-[#252525] bg-[#1E1E1E] p-3.5">
+                    <div className="flex items-center gap-2 text-neutral-400 text-[10px] font-bold uppercase tracking-wider">
+                      <Network className="h-3.5 w-3.5" />
+                      Reconstructed Streams
+                    </div>
+                    <p className="mt-2 text-2xl font-black text-white font-mono">{totalStreams}</p>
+                    <p className="text-[10px] text-neutral-400">TCP stream handshakes</p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#252525] bg-[#1E1E1E] p-3.5">
+                    <div className="flex items-center gap-2 text-neutral-400 text-[10px] font-bold uppercase tracking-wider">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Finding Instances
+                    </div>
+                    <p className="mt-2 text-2xl font-black text-white font-mono">{analytics.totalFindings}</p>
+                    <p className="text-[10px] text-neutral-400">{analytics.uniqueViolatedRulesCount} Unique Violated Rules</p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#252525] bg-[#1E1E1E] p-3.5">
+                    <div className="flex items-center gap-2 text-neutral-400 text-[10px] font-bold uppercase tracking-wider">
+                      <Mail className="h-3.5 w-3.5" />
+                      Protocol Baseline
+                    </div>
+                    <p className="mt-2 text-base font-bold text-white truncate">{detectedProtocol}</p>
+                    <p className="text-[10px] text-neutral-400">Port-identified service</p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#252525] bg-[#1E1E1E] p-3.5">
+                    <div className="flex items-center gap-2 text-neutral-400 text-[10px] font-bold uppercase tracking-wider">
+                      <Layers3 className="h-3.5 w-3.5" />
+                      Audit Standard
+                    </div>
+                    <p className="mt-2 text-xs font-bold text-white truncate">{standardChecked}</p>
+                    <p className="text-[10px] text-neutral-400">19 Canonical Rules in Scope</p>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-br from-slate-50 to-blue-50/55 p-4">
-                  <div className="flex items-center gap-2 text-blue-600">
-                    <Network className="h-4 w-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wide">
-                      Streams
-                    </span>
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-slate-900">
-                    {totalStreams}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Total reconstructed streams
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-br from-slate-50 to-blue-50/55 p-4">
-                  <div className="flex items-center gap-2 text-amber-600">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wide">
-                      Findings
-                    </span>
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-slate-900">
-                    {findings.length}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Deterministic observations
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-br from-slate-50 to-blue-50/55 p-4">
-                  <div className="flex items-center gap-2 text-emerald-600">
-                    <Mail className="h-4 w-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wide">
-                      Protocol
-                    </span>
-                  </div>
-                  <p className="mt-2 truncate text-xl font-black text-slate-900">
-                    {protocolDisplay}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Detected by the analysis pipeline
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-br from-slate-50 to-blue-50/55 p-4">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Layers3 className="h-4 w-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wide">
-                      Standard
-                    </span>
-                  </div>
-                  <p className="mt-2 truncate text-sm font-black text-slate-900">
-                    {standardChecked}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Reported by the backend
-                  </p>
-                </div>
+              <div className="mt-5 pt-4 border-t border-[#252525] flex items-center justify-between text-xs text-neutral-400">
+                <span>Total verified deductions: <strong className="text-white font-mono">−{analytics.totalPenalty} pts</strong></span>
+                <span className="font-mono text-[11px] text-neutral-500">Hash: {effectiveId.slice(0, 12)}...</span>
               </div>
             </div>
           </div>
-        </Card>
+        </div>
 
-        {/* Consolidated Telemetry & Compliance Analytics */}
-        <section>
-          <div className="mb-3 flex items-center justify-between">
+        {/* Upgraded Analytics Visualization Grid (Requirement 11) */}
+        <section className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-black text-slate-900">
-                Compliance & Telemetry Analytics
+              <h2 className="text-sm font-bold uppercase tracking-wider text-[#111111]">
+                Compliance &amp; Severity Analytics
               </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Visual distribution of evaluated security rules, severity levels, and penalty deductions.
+              <p className="text-xs text-[#666666]">
+                Evidence-backed distribution across severity levels, RFC compliance baselines, and functional domains. Finding instances are evidence-backed occurrences produced by the canonical rule engine; one rule may produce multiple instances across streams.
               </p>
             </div>
-            <span className="text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-1 rounded font-bold">
-              {findings.length} Evaluated Rules
+            <span className="text-[11px] font-mono font-bold text-neutral-600 bg-white border border-[#E5E5E0] px-2.5 py-1 rounded-lg shadow-sm self-start sm:self-auto">
+              19 Canonical Rules in Scope
             </span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Findings by Severity Donut */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-amber-500" />
-                  Findings by Severity
-                </h3>
-                <span className="text-xs text-slate-400 font-mono">{findings.length} Total</span>
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Card 1: Findings by Severity - Restored Bar Chart with Real Data */}
+            <Card className="p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-neutral-700" />
+                    Findings by Severity
+                  </h3>
+                  <span className="text-[11px] text-neutral-500 font-mono font-bold">{analytics.totalFindings} Finding Instances</span>
+                </div>
 
-              {severityData.length > 0 ? (
-                <div className="h-56 w-full">
+                <div className="h-44 w-full pt-1">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={severityData}
+                    <BarChart
+                      data={severityData}
+                      margin={{ top: 12, right: 10, left: -22, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EBEBEA" />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#888888"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={{ stroke: '#E5E5E0' }}
+                      />
+                      <YAxis
+                        stroke="#888888"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={{ stroke: '#E5E5E0' }}
+                        allowDecimals={false}
+                      />
+                      <Tooltip content={<CustomSeverityTooltip />} cursor={{ fill: '#F5F5F0', opacity: 0.6 }} />
+                      <Bar
                         dataKey="count"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={45}
-                        outerRadius={75}
-                        paddingAngle={3}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={false}
+                        radius={[4, 4, 0, 0]}
+                        isAnimationActive={true}
+                        animationDuration={600}
                       >
                         {severityData.map((entry, index) => (
-                          <Cell key={`cell-sev-${index}`} fill={entry.color} />
+                          <Cell key={`sev-cell-${index}`} fill={entry.color} />
                         ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(val, name) => [`${val} findings`, `${name} Severity`]}
-                      />
-                    </PieChart>
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
-              ) : (
-                <div className="h-56 flex items-center justify-center text-slate-400 text-xs">
-                  No findings evaluated for this capture
-                </div>
-              )}
-            </Card>
-
-            {/* Compliance Status Distribution Donut */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Compliance Status Distribution
-                </h3>
-                <span className="text-xs text-slate-400 font-mono">RFC Conformance</span>
               </div>
 
-              {statusData.length > 0 ? (
-                <div className="h-56 w-full">
+              <div className="mt-4 pt-3 border-t border-[#F0F0EB] flex items-center justify-between text-[11px] text-neutral-500 font-mono">
+                <span>Total finding instances: <strong className="text-[#111111]">{analytics.totalFindings}</strong></span>
+                <span>Critical + High: <strong className={seriousIssues > 0 ? 'text-rose-600' : 'text-emerald-700'}>{seriousIssues}</strong></span>
+              </div>
+            </Card>
+
+            {/* Card 2: Compliance Status Donut (Requirement 11.B - Center Total & Percentages) */}
+            <Card className="p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-neutral-700" />
+                    Compliance Status
+                  </h3>
+                  <span className="text-[11px] text-neutral-500 font-mono font-bold">RFC Conformance</span>
+                </div>
+
+                <div className="relative h-44 w-full flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={statusData}
+                        data={statusData.filter((d) => d.count > 0)}
                         dataKey="count"
                         nameKey="name"
                         cx="50%"
                         cy="50%"
-                        innerRadius={45}
-                        outerRadius={75}
+                        innerRadius={50}
+                        outerRadius={70}
                         paddingAngle={3}
-                        label={({ name, count }) => `${name}: ${count}`}
-                        labelLine={false}
                       >
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-st-${index}`} fill={entry.color} />
+                        {statusData.filter((d) => d.count > 0).map((entry, index) => (
+                          <Cell key={`st-cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(val, name) => [`${val} rules`, name]}
+                        contentStyle={{
+                          backgroundColor: '#111111',
+                          borderColor: '#222222',
+                          borderRadius: '8px',
+                          color: '#FFFFFF',
+                          fontSize: '11px',
+                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
+
+                  {/* Donut Centerpiece Total */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-black text-[#111111] font-mono leading-none">
+                      {analytics.totalFindings}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 mt-1">
+                      Total Findings
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className="h-56 flex items-center justify-center text-slate-400 text-xs">
-                  No status breakdown available
+              </div>
+
+              {/* Semantic Donut Legend */}
+              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#F0F0EB] text-[11px]">
+                {statusData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="truncate text-neutral-600">{item.shortLabel || item.label}</span>
+                    </div>
+                    <span className="font-mono font-bold text-[#111111] ml-1">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Card 3: Issue Categories (Requirement 11.C - Horizontal Ranking Bars) */}
+            <Card className="p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                    <Layers3 className="h-4 w-4 text-neutral-700" />
+                    Issue Categories
+                  </h3>
+                  <span className="text-[11px] text-neutral-500 font-mono font-bold">5 Domains</span>
                 </div>
-              )}
+
+                <div className="space-y-3 pt-1">
+                  {categoryData.map((cat) => (
+                    <div key={cat.name} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#111111] truncate max-w-[170px]" title={cat.name}>
+                          {cat.name}
+                        </span>
+                        <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                          {cat.findingsCount > 0 ? (
+                            <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                              {cat.findingsCount} {cat.findingsCount === 1 ? 'finding' : 'findings'} / {cat.evaluatedCount} evaluated
+                            </span>
+                          ) : (
+                            <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                              0 findings / {cat.evaluatedCount} evaluated • Passed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#F0F0EB] overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.max(cat.evaluatedCount > 0 ? 8 : 0, cat.percent)}%`,
+                            backgroundColor: cat.findingsCount > 0 ? '#DC2626' : '#16A34A',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 pt-3 border-t border-[#F0F0EB] text-[11px] text-neutral-500 font-mono flex items-center justify-between">
+                <span>Functional domains:</span>
+                <span className="font-bold text-[#111111]">{categoryData.length} active domains</span>
+              </div>
             </Card>
           </div>
 
-          {/* Penalty Deductions Bar Chart if penalties exist */}
+          {/* Penalty Deductions Bar Chart */}
           {deductionData.length > 0 && (
-            <Card className="mt-4 p-6">
+            <Card className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-rose-500" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-neutral-700" />
                     Penalty Point Deductions by Rule
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Individual score penalties deducted from the 100-point posture baseline
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Individual penalties subtracted from the 100-point budget baseline.
                   </p>
                 </div>
-                <span className="text-xs font-mono text-rose-600 bg-rose-50 px-2.5 py-1 rounded font-bold">
-                  Total Penalty: -{report?.posture_report?.total_penalty ?? 0} pts
+                <span className="font-mono text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded">
+                  Total Penalty: −{report?.posture_report?.total_penalty ?? 0} pts
                 </span>
               </div>
 
-              <div className="h-56 w-full">
+              <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={deductionData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} unit=" pts" />
+                  <BarChart data={deductionData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E0" />
+                    <XAxis dataKey="name" stroke="#888888" fontSize={10} />
+                    <YAxis stroke="#888888" fontSize={10} unit=" pts" />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const item = payload[0].payload;
                           return (
-                            <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg text-xs">
-                              <p className="font-bold text-slate-800">{item.name}</p>
-                              <p className="text-slate-600">{item.title}</p>
-                              <p className="text-rose-600 font-mono font-bold mt-1">
-                                Penalty: -{item.penalty} pts
+                            <div className="rounded-lg border border-[#222222] bg-[#111111] p-2.5 shadow-md text-white text-xs">
+                              <p className="font-bold">{item.name}</p>
+                              <p className="text-neutral-400">{item.title}</p>
+                              <p className="text-rose-400 font-mono font-bold mt-1">
+                                Penalty: −{item.penalty} pts
                               </p>
                             </div>
                           );
@@ -1113,7 +945,7 @@ function Dashboard() {
                         return null;
                       }}
                     />
-                    <Bar dataKey="penalty" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="penalty" fill="#111111" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1121,105 +953,65 @@ function Dashboard() {
           )}
         </section>
 
+        {/* Action Cards: Next Steps */}
         <section>
-          <div className="mb-3 flex items-end justify-between">
-            <div>
-              <h2 className="text-base font-black text-slate-900">
-                Continue investigation
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Three focused views for the next step.
-              </p>
-            </div>
+          <div className="mb-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#111111]">
+              Continue Investigation
+            </h2>
+            <p className="text-xs text-[#666666]">
+              Deep-dive into reconstructed streams, findings telemetry, or export a court-ready PDF.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <ActionCard
               icon={Network}
               title="Stream Analysis"
-              description="See every connection and understand what happened during the captured session."
-              buttonLabel="Open Stream Analysis"
-              tone="violet"
+              description="Inspect packet boundaries, handshakes, and conversation transcripts for every TCP stream."
+              buttonLabel="Inspect Streams"
               onClick={() => navigate('/analysis')}
             />
 
             <ActionCard
               icon={AlertTriangle}
-              title="Findings & CVEs"
-              description="Review the security problems identified by the real analysis and their supporting evidence."
+              title="Findings &amp; CVEs"
+              description="Review security non-compliances, penalty points, and verified evidence links."
               buttonLabel="View Findings"
-              tone="amber"
               onClick={() => navigate('/findings')}
             />
 
-            <Card className="group flex h-full flex-col p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_80px_rgba(15,76,160,0.18)]">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 transition-transform duration-300 group-hover:scale-110">
-                <FileText className="h-5 w-5" />
+            <Card className="flex flex-col p-5 hover:border-[#C8C8C0]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F7F7F5] border border-[#E5E5E0] text-[#111111]">
+                <FileText className="h-4.5 w-4.5" />
               </div>
-
-              <h3 className="mt-5 text-lg font-black tracking-tight text-slate-900">
+              <h3 className="mt-4 text-base font-bold tracking-tight text-[#111111]">
                 Forensic Report
               </h3>
-
-              <p className="mt-2 min-h-[42px] text-sm leading-6 text-slate-500">
-                {reportCardDescription}
+              <p className="mt-1.5 min-h-[38px] text-xs leading-relaxed text-[#666666]">
+                {filename} · {fileSize} · {totalStreams} stream{totalStreams === 1 ? '' : 's'} inspected.
               </p>
-
-              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mt-5 pt-3 border-t border-[#E5E5E0] grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => navigate('/reports')}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 active:scale-[0.98]"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#111111] px-3 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-[#222222]"
                 >
-                  <FileText className="h-4 w-4" />
-                  View Full Report
+                  <FileText className="h-3.5 w-3.5" />
+                  View Report
                 </button>
-
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-100 active:scale-[0.98]"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#E5E5E0] bg-white px-3 py-2 text-xs font-bold text-[#111111] hover:bg-[#F7F7F5]"
                 >
-                  <Download className="h-4 w-4" />
-                  Download Forensic Report
+                  <Download className="h-3.5 w-3.5" />
+                  PDF Export
                 </button>
               </div>
             </Card>
           </div>
         </section>
-
-        <Card className="p-5">
-          <div className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-slate-400">
-                Capture
-              </p>
-              <p className="mt-1 truncate font-bold text-slate-800">{filename}</p>
-            </div>
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-slate-400">
-                File size
-              </p>
-              <p className="mt-1 font-bold text-slate-800">{fileSize}</p>
-            </div>
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-slate-400">
-                Analysis ID
-              </p>
-              <p className="mt-1 truncate font-mono font-bold text-slate-800">
-                {effectiveId}
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-slate-400">
-                TLS observed
-              </p>
-              <p className="mt-1 font-bold text-slate-800">
-                {hasTls ? 'Yes' : 'No'}
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
 
       {scoreAnalysisOpen && (
@@ -1232,59 +1024,6 @@ function Dashboard() {
           }}
         />
       )}
-
-      <style>{`
-        @keyframes dashboardModalIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.985); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-
-        .dashboard-modal-enter {
-          animation: dashboardModalIn 220ms ease-out both;
-        }
-
-        @keyframes dashboardFadeUp {
-          from { opacity: 0; transform: translateY(18px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .dashboard-page > div {
-          animation: dashboardFadeUp 0.55s ease-out both;
-        }
-
-        .dashboard-page > div > header {
-          animation: dashboardFadeUp 0.55s ease-out 0.05s both;
-        }
-
-        .dashboard-page > div > section:nth-of-type(1) {
-          animation: dashboardFadeUp 0.55s ease-out 0.12s both;
-        }
-
-        .dashboard-page > div > .overflow-hidden {
-          animation: dashboardFadeUp 0.55s ease-out 0.19s both;
-        }
-
-        .dashboard-page > div > section:nth-of-type(2) {
-          animation: dashboardFadeUp 0.55s ease-out 0.26s both;
-        }
-
-        .dashboard-page > div > .p-5 {
-          animation: dashboardFadeUp 0.55s ease-out 0.33s both;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .dashboard-modal-enter,
-          .dashboard-page > div,
-          .dashboard-page > div > header,
-          .dashboard-page > div > section,
-          .dashboard-page > div > .overflow-hidden,
-          .dashboard-page > div > .p-5 {
-            animation: none !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
-
-export default Dashboard;

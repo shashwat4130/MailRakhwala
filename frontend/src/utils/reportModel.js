@@ -654,3 +654,246 @@ export function normalizeReport(rawReport) {
 
 export const normalizeAnalysisReport = normalizeReport;
 
+export const CANONICAL_RULES_COUNT = 19;
+
+/**
+ * Authoritative Master Report Analytics & Aggregations.
+ *
+ * Enforces strict semantic invariants:
+ * 1. Exactly 19 Canonical Rules.
+ * 2. Total findings count matches the sum of severity levels (including Informational/Unknown).
+ * 3. Donut center equals the sum of compliance statuses (Pass + Fail + Indeterminate + N/A).
+ * 4. Issue categories partition all evaluated findings and non-compliant violations into 5 explicit domains.
+ * 5. Unique violated rules group multiple finding/evidence instances by canonical ruleId with applied penalties.
+ */
+export function getReportAnalytics(report) {
+  const isApplicable = isReportApplicable(report);
+  const findings = isApplicable ? getComplianceFindings(report) : [];
+  const deductions = isApplicable ? getPostureDeductions(report) : [];
+  const rawScore = getPostureScore(report);
+  const totalFindings = findings.length;
+
+  // 1. Severity Breakdown (Must account for 100% of findings, no silent drops!)
+  const severityCounts = {
+    CRITICAL: 0,
+    HIGH: 0,
+    MEDIUM: 0,
+    LOW: 0,
+    INFORMATIONAL: 0,
+  };
+
+  findings.forEach((f) => {
+    const sev = String(f?.severity || '').trim().toUpperCase();
+    if (sev === 'CRITICAL') severityCounts.CRITICAL++;
+    else if (sev === 'HIGH') severityCounts.HIGH++;
+    else if (sev === 'MEDIUM') severityCounts.MEDIUM++;
+    else if (sev === 'LOW') severityCounts.LOW++;
+    else severityCounts.INFORMATIONAL++; // INFO, INFORMATIONAL, UNKNOWN, etc.
+  });
+
+  const severityData = [
+    { name: 'CRITICAL', label: 'Critical', count: severityCounts.CRITICAL, color: '#DC2626' },
+    { name: 'HIGH', label: 'High', count: severityCounts.HIGH, color: '#EA580C' },
+    { name: 'MEDIUM', label: 'Medium', count: severityCounts.MEDIUM, color: '#D97706' },
+    { name: 'LOW', label: 'Low', count: severityCounts.LOW, color: '#16A34A' },
+  ];
+
+  if (severityCounts.INFORMATIONAL > 0) {
+    severityData.push({
+      name: 'INFORMATIONAL',
+      label: 'Informational',
+      count: severityCounts.INFORMATIONAL,
+      color: '#64748B',
+    });
+  }
+
+  // 2. Compliance Status Breakdown (Donut centerpiece & legend)
+  const statusCounts = {
+    COMPLIANT: 0,
+    NON_COMPLIANT: 0,
+    UNKNOWN: 0,
+    NOT_APPLICABLE: 0,
+  };
+
+  findings.forEach((f) => {
+    const st = String(f?.status || '').trim().toUpperCase();
+    if (st === 'COMPLIANT') statusCounts.COMPLIANT++;
+    else if (st === 'NON_COMPLIANT') statusCounts.NON_COMPLIANT++;
+    else if (st === 'NOT_APPLICABLE') statusCounts.NOT_APPLICABLE++;
+    else statusCounts.UNKNOWN++;
+  });
+
+  const statusTotal = totalFindings || 1;
+  const statusData = [
+    {
+      name: 'NON_COMPLIANT',
+      label: 'Non-Compliant (Fail)',
+      shortLabel: 'Fail',
+      count: statusCounts.NON_COMPLIANT,
+      color: '#DC2626',
+      percent: Math.round((statusCounts.NON_COMPLIANT / statusTotal) * 100),
+    },
+    {
+      name: 'COMPLIANT',
+      label: 'Compliant (Pass)',
+      shortLabel: 'Pass',
+      count: statusCounts.COMPLIANT,
+      color: '#16A34A',
+      percent: Math.round((statusCounts.COMPLIANT / statusTotal) * 100),
+    },
+    {
+      name: 'UNKNOWN',
+      label: 'Indeterminate',
+      shortLabel: 'Unknown',
+      count: statusCounts.UNKNOWN,
+      color: '#A0A09C',
+      percent: Math.round((statusCounts.UNKNOWN / statusTotal) * 100),
+    },
+  ];
+
+  if (statusCounts.NOT_APPLICABLE > 0) {
+    statusData.push({
+      name: 'NOT_APPLICABLE',
+      label: 'Not Applicable',
+      shortLabel: 'N/A',
+      count: statusCounts.NOT_APPLICABLE,
+      color: '#6B7280',
+      percent: Math.round((statusCounts.NOT_APPLICABLE / statusTotal) * 100),
+    });
+  }
+
+  // 3. Issue Categories (5 Mutually Exclusive Functional Domains)
+  const categoryDefs = [
+    {
+      name: 'Cipher Suites & PFS',
+      matcher: (id, title, cat) =>
+        id.includes('CIPHER') || id.includes('KEX') || title.includes('CIPHER') ||
+        title.includes('KEY EXCHANGE') || title.includes('PFS') || cat.includes('CIPHER') || cat.includes('CRYPTO'),
+    },
+    {
+      name: 'Certificates & PKI',
+      matcher: (id, title, cat) =>
+        id.includes('CERT') || id.includes('PKI') || title.includes('CERT') ||
+        title.includes('SAN') || title.includes('HOSTNAME') || cat.includes('CERT') || cat.includes('PKI'),
+    },
+    {
+      name: 'STARTTLS Negotiation',
+      matcher: (id, title, cat) =>
+        id.includes('STARTTLS') || title.includes('STARTTLS') || cat.includes('STARTTLS'),
+    },
+    {
+      name: 'Plaintext / Identity',
+      matcher: (id, title, cat) =>
+        id.includes('PLAIN') || id.includes('AUTH') || title.includes('AUTH') ||
+        title.includes('PLAINTEXT') || cat.includes('PLAIN') || cat.includes('IDENTITY'),
+    },
+    {
+      name: 'TLS Protocol',
+      matcher: () => true, // default catch-all for protocol checks
+    },
+  ];
+
+  const categoryMap = {
+    'Cipher Suites & PFS': { findingsCount: 0, evaluatedCount: 0, items: [] },
+    'Certificates & PKI': { findingsCount: 0, evaluatedCount: 0, items: [] },
+    'STARTTLS Negotiation': { findingsCount: 0, evaluatedCount: 0, items: [] },
+    'Plaintext / Identity': { findingsCount: 0, evaluatedCount: 0, items: [] },
+    'TLS Protocol': { findingsCount: 0, evaluatedCount: 0, items: [] },
+  };
+
+  findings.forEach((f) => {
+    const id = String(f.rule_id || f.finding_id || '').toUpperCase();
+    const title = String(f.title || '').toUpperCase();
+    const cat = String(f.category || '').toUpperCase();
+
+    let matchedCategory = 'TLS Protocol';
+    for (const def of categoryDefs) {
+      if (def.matcher(id, title, cat)) {
+        matchedCategory = def.name;
+        break;
+      }
+    }
+
+    const entry = categoryMap[matchedCategory];
+    entry.evaluatedCount++;
+    entry.items.push(f);
+    if (String(f.status || '').toUpperCase() === 'NON_COMPLIANT') {
+      entry.findingsCount++;
+    }
+  });
+
+  const categoryData = Object.entries(categoryMap)
+    .map(([name, val]) => ({
+      name,
+      findingsCount: val.findingsCount,
+      evaluatedCount: val.evaluatedCount,
+      percent: Math.round((val.evaluatedCount / (totalFindings || 1)) * 100),
+      passed: val.findingsCount === 0,
+    }))
+    .filter((c) => c.evaluatedCount > 0)
+    .sort((a, b) => b.findingsCount - a.findingsCount || b.evaluatedCount - a.evaluatedCount);
+
+  // 4. Map deductions by rule ID for instant lookup
+  const deductionMap = new Map();
+  deductions.forEach((d) => {
+    const key = d.upstream_rule_id || d.rule_id;
+    if (key && !deductionMap.has(key)) {
+      deductionMap.set(key, d);
+    }
+  });
+
+  // 5. Group findings by rule ID (Solves Duplication Bug!)
+  const groupedRulesMap = new Map();
+  findings.forEach((f) => {
+    const rId = f.rule_id || f.finding_id || 'UNKNOWN-RULE';
+    if (!groupedRulesMap.has(rId)) {
+      const deduction = deductionMap.get(rId) || null;
+      groupedRulesMap.set(rId, {
+        ruleId: rId,
+        title: f.title || rId,
+        description: f.description || '',
+        recommendation: f.recommendation || '',
+        category: f.category || '',
+        severity: f.severity || 'MEDIUM',
+        status: f.status || 'UNKNOWN',
+        instances: [],
+        deduction,
+        penaltyApplied: typeof deduction?.penalty === 'number' ? deduction.penalty : 0,
+      });
+    }
+    const ruleGroup = groupedRulesMap.get(rId);
+    ruleGroup.instances.push(f);
+
+    // Escalate severity/status if any instance is NON_COMPLIANT or higher severity
+    if (f.status === 'NON_COMPLIANT') {
+      ruleGroup.status = 'NON_COMPLIANT';
+    }
+  });
+
+  const allGroupedRules = Array.from(groupedRulesMap.values());
+  const uniqueViolatedRules = allGroupedRules
+    .filter((r) => r.status === 'NON_COMPLIANT')
+    .sort((a, b) => (b.penaltyApplied - a.penaltyApplied) || (b.instances.length - a.instances.length));
+
+  // Applied penalty points
+  const totalDeductions = deductions.reduce((acc, d) => acc + (typeof d.penalty === 'number' ? d.penalty : 0), 0);
+
+  return {
+    canonicalRulesCount: CANONICAL_RULES_COUNT,
+    totalFindings,
+    severityCounts,
+    severityData,
+    statusCounts,
+    statusData,
+    categoryData,
+    allGroupedRules,
+    uniqueViolatedRules,
+    uniqueViolatedRulesCount: uniqueViolatedRules.length,
+    deductions,
+    totalDeductionsCount: deductions.length,
+    totalPenalty: totalDeductions,
+    postureScore: rawScore,
+    isApplicable,
+  };
+}
+

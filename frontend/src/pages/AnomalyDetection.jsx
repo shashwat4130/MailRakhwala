@@ -16,6 +16,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { safeVal } from '../utils/formatters';
 import { getCanonicalFeatures, getAnomalyDetection, getFeatureVector } from '../utils/reportModel';
 
@@ -54,12 +55,10 @@ export default function AnomalyDetection() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <ScanSearch className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Loading anomaly telemetry...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="Unsupervised Anomaly Detection"
+          message="Evaluating Isolation Forest outlier scores against baseline protocol distributions..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">
@@ -137,9 +136,9 @@ export default function AnomalyDetection() {
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 via-white to-slate-50 p-6 shadow-sm">
+            <div className="rounded-2xl border border-[#E5E5E0] bg-[#F7F7F5] p-6 shadow-sm">
               <div className="flex items-start gap-4">
-                <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-white">
                   <Info className="h-6 w-6" />
                 </div>
                 <div>
@@ -159,7 +158,7 @@ export default function AnomalyDetection() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                <Cpu className="h-4 w-4 text-blue-600" /> Model Algorithm
+                <Cpu className="h-4 w-4 text-[#111111]" /> Model Algorithm
               </div>
               <div className="mt-2 text-lg font-bold text-slate-900">
                 {anomaly?.model_metadata?.model_name || 'IsolationForest'}
@@ -210,7 +209,7 @@ export default function AnomalyDetection() {
                     19-dimensional mathematical representation evaluated across 5 functional categories
                   </p>
                 </div>
-                <span className="text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-1 rounded font-semibold">
+                <span className="text-xs font-mono bg-[#F7F7F5] text-[#111111] border border-[#E5E5E0] px-2.5 py-1 rounded font-semibold">
                   19 Dimensions Verified
                 </span>
               </div>

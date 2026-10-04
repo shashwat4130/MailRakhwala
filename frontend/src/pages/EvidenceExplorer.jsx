@@ -14,6 +14,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { valueOrUnavailable, formatTimestamp } from '../utils/formatters';
 import { severityBadgeClasses } from '../utils/severity';
 
@@ -137,26 +138,26 @@ export default function EvidenceExplorer() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <RefreshCw className="h-6 w-6 animate-spin text-[#0B5ED7]" />
-          <p className="text-sm font-semibold text-slate-600">Gathering forensic evidence records...</p>
-        </div>
-      </div>
+      <LoadingState
+        title="Forensic Evidence Telemetry"
+        message="Gathering packet traces, stream offsets, and cryptographic proof records..."
+      />
     );
   }
 
   if (!report || !report.session) {
     return (
       <EmptyAnalysisState
-        title="No active evidence records"
-        description="Upload a PCAP capture to extract and explore traceable forensic telemetry."
+        title="START ANALYSIS"
+        description="Run an analysis to explore evidence."
+        buttonText="Start Analysis"
+        featureBadge="Evidence Records"
       />
     );
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f8fbff] px-6 py-8 lg:px-10">
+    <div className="relative min-h-screen bg-[#F7F7F5] px-6 py-8 lg:px-10">
       <div className="relative z-10 mx-auto max-w-[1400px]">
         <PageHeader
           category="Traceable Telemetry"
@@ -168,22 +169,22 @@ export default function EvidenceExplorer() {
         {/* Filter and Search Bar */}
         <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#888888]" />
             <input
               type="text"
               placeholder="Search by rule, property, value, or stream..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 shadow-sm outline-none transition focus:border-[#0B5ED7]"
+              className="w-full rounded-2xl border border-[#E5E5E0] bg-white py-2.5 pl-10 pr-4 text-xs font-medium text-[#111111] shadow-sm outline-none transition focus:border-[#111111]"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
+            <Filter className="h-4 w-4 text-[#888888]" />
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 shadow-sm outline-none focus:border-[#0B5ED7]"
+              className="rounded-2xl border border-[#E5E5E0] bg-white px-3 py-2.5 text-xs font-bold text-[#555555] shadow-sm outline-none focus:border-[#111111]"
             >
               <option value="ALL">All Evidence Sources ({allEvidence.length})</option>
               <option value="Compliance Finding">Compliance Findings</option>
@@ -195,10 +196,10 @@ export default function EvidenceExplorer() {
         </div>
 
         {/* Evidence Table */}
-        <div className="overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-[#E5E5E0] bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              <thead className="border-b border-[#E5E5E0] bg-[#F7F7F5] text-[10px] font-extrabold uppercase tracking-wider text-[#888888]">
                 <tr>
                   <th className="py-3.5 pl-6 pr-3">Rule / ID</th>
                   <th className="px-3 py-3.5">Source Type</th>
@@ -209,10 +210,10 @@ export default function EvidenceExplorer() {
                   <th className="py-3.5 pl-3 pr-6 text-right">Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E5E5E0]">
                 {filteredEvidence.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-xs text-slate-500">
+                    <td colSpan={7} className="py-12 text-center text-xs text-[#666666]">
                       No evidence records match the search criteria.
                     </td>
                   </tr>
@@ -221,34 +222,34 @@ export default function EvidenceExplorer() {
                     <tr
                       key={item.id}
                       onClick={() => setSelectedEvidence(item)}
-                      className="cursor-pointer transition hover:bg-blue-50/40"
+                      className="cursor-pointer transition hover:bg-[#F7F7F5]"
                     >
-                      <td className="py-3.5 pl-6 pr-3 font-mono font-bold text-slate-900">
+                      <td className="py-3.5 pl-6 pr-3 font-mono font-bold text-[#111111]">
                         {item.ruleId}
-                        <p className="font-sans font-normal text-[11px] text-slate-500 line-clamp-1">{item.title}</p>
+                        <p className="font-sans font-normal text-[11px] text-[#666666] line-clamp-1">{item.title}</p>
                       </td>
                       <td className="px-3 py-3.5 whitespace-nowrap">
-                        <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                        <span className="rounded-lg border border-[#E5E5E0] bg-[#F7F7F5] px-2 py-0.5 text-[10px] font-bold text-[#555555]">
                           {item.sourceType}
                         </span>
                       </td>
-                      <td className="px-3 py-3.5 font-mono text-slate-700">
+                      <td className="px-3 py-3.5 font-mono text-[#555555]">
                         {valueOrUnavailable(item.observedProperty)}
                       </td>
-                      <td className="px-3 py-3.5 font-mono font-bold text-slate-900 max-w-[200px] truncate">
+                      <td className="px-3 py-3.5 font-mono font-bold text-[#111111] max-w-[200px] truncate">
                         {valueOrUnavailable(item.observedValue)}
                       </td>
-                      <td className="px-3 py-3.5 font-mono text-[11px] text-slate-600 max-w-[160px] truncate">
+                      <td className="px-3 py-3.5 font-mono text-[11px] text-[#666666] max-w-[160px] truncate">
                         {valueOrUnavailable(item.streamId, 'Session')}
                       </td>
-                      <td className="px-3 py-3.5 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                      <td className="px-3 py-3.5 whitespace-nowrap font-mono text-[11px] text-[#666666]">
                         {item.packetNumber ? `Frame #${item.packetNumber}` : 'Frame unanchored'}
-                        {item.timestamp && <p className="text-[10px] text-slate-400">{formatTimestamp(item.timestamp)}</p>}
+                        {item.timestamp && <p className="text-[10px] text-[#888888]">{formatTimestamp(item.timestamp)}</p>}
                       </td>
                       <td className="py-3.5 pl-3 pr-6 text-right">
                         <button
                           type="button"
-                          className="rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-[#0B5ED7] transition hover:bg-[#0B5ED7] hover:text-white"
+                          className="rounded-lg border border-[#E5E5E0] bg-[#F7F7F5] px-2.5 py-1 text-[11px] font-bold text-[#111111] transition hover:bg-[#111111] hover:text-white"
                         >
                           Inspect
                         </button>
@@ -263,20 +264,20 @@ export default function EvidenceExplorer() {
 
         {/* Evidence Modal / Detail Drawer */}
         {selectedEvidence && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-2xl rounded-3xl border border-blue-100 bg-white p-6 shadow-2xl">
-              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl rounded-2xl border border-[#202020] bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between border-b border-[#E5E5E0] pb-4">
                 <div>
-                  <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-[#0B5ED7]">
+                  <span className="rounded-md border border-[#E5E5E0] bg-[#F7F7F5] px-2 py-0.5 text-[10px] font-bold text-[#111111]">
                     {selectedEvidence.sourceType}
                   </span>
-                  <h3 className="mt-1.5 text-lg font-black text-slate-900">{selectedEvidence.title}</h3>
-                  <p className="font-mono text-xs text-slate-500">{selectedEvidence.ruleId}</p>
+                  <h3 className="mt-1.5 text-lg font-black text-[#111111]">{selectedEvidence.title}</h3>
+                  <p className="font-mono text-xs text-[#888888]">{selectedEvidence.ruleId}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedEvidence(null)}
-                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
+                  className="rounded-xl p-2 text-[#888888] hover:bg-[#F7F7F5]"
                 >
                   <X className="h-5 w-5" />
                 </button>

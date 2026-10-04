@@ -24,6 +24,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { safeVal } from '../utils/formatters';
 
 export default function MLExplainability() {
@@ -65,12 +66,10 @@ export default function MLExplainability() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <Brain className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Computing SHAP attributions...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="SHAP Explainability Engine"
+          message="Calculating local Shapley values and TreeExplainer mathematical attributions..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">
@@ -83,47 +82,47 @@ export default function MLExplainability() {
         <>
           {/* Top Status & Architecture Banner */}
           {isShapAvailable ? (
-            <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/60 via-white to-slate-50 p-6 shadow-sm">
+            <div className="rounded-2xl border border-[#202020] bg-[#111111] p-6 shadow-sm text-white">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-start gap-4">
-                  <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                  <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#222222] text-white">
                     <Brain className="h-6 w-6" />
                   </div>
                   <div>
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h2 className="text-xl font-bold text-slate-900">
+                      <h2 className="text-xl font-bold text-white">
                         Local Feature Attribution Ready
                       </h2>
-                      <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-2.5 py-0.5 text-xs font-semibold">
+                      <span className="inline-flex items-center rounded-full bg-[#222222] border border-[#333333] text-white px-2.5 py-0.5 text-xs font-semibold">
                         Target Class: {shap.predicted_class}
                       </span>
-                      <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-800 px-2.5 py-0.5 text-xs font-semibold">
+                      <span className="inline-flex items-center rounded-full bg-[#222222] border border-[#333333] text-white px-2.5 py-0.5 text-xs font-semibold">
                         Statistical Risk Model
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-600 leading-relaxed max-w-3xl">
+                    <p className="mt-1 text-xs text-white/70 leading-relaxed max-w-3xl">
                       {safeVal(shap.status_text, 'SHAP local explanations quantify the contribution of each network feature.')}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end shrink-0 border-t md:border-t-0 md:border-l border-slate-200 pt-3 md:pt-0 md:pl-6">
-                  <span className="text-xs uppercase font-semibold text-slate-500">
+                <div className="flex flex-col items-end shrink-0 border-t md:border-t-0 md:border-l border-[#333333] pt-3 md:pt-0 md:pl-6">
+                  <span className="text-xs uppercase font-semibold text-white/60">
                     Explainer Engine
                   </span>
-                  <span className="text-lg font-bold text-slate-900 font-mono mt-0.5">
+                  <span className="text-lg font-bold text-white font-mono mt-0.5">
                     {shap.model_metadata?.explainer_name || 'TreeExplainer'}
                   </span>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-white/50">
                     Base Value (Margin): {typeof shap.model_metadata?.base_value === 'number' ? shap.model_metadata.base_value.toFixed(3) : '0.000'}
                   </span>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 via-white to-slate-50 p-6 shadow-sm">
+            <div className="rounded-2xl border border-[#E5E5E0] bg-[#F7F7F5] p-6 shadow-sm">
               <div className="flex items-start gap-4">
-                <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-white">
                   <Info className="h-6 w-6" />
                 </div>
                 <div>

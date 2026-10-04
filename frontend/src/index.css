@@ -1,24 +1,291 @@
 @import "tailwindcss";
 
 @theme {
-  --color-soc-dark: #0B0F19;
-  --color-soc-card: #111827;
-  --color-soc-border: #1F2937;
-  --color-soc-accent: #3B82F6;
-  --color-soc-danger: #EF4444;
-  --color-soc-warning: #F59E0B;
-  --color-soc-success: #10B981;
-  --color-soc-muted: #9CA3AF;
+  --color-workspace: #F7F7F5;
+  --color-card: #FFFFFF;
+  --color-border-subtle: #E5E5E0;
+  --color-sidebar: #111111;
+  --color-sidebar-secondary: #181818;
+  --color-sidebar-tertiary: #202020;
+  
+  --color-text-primary: #111111;
+  --color-text-secondary: #666666;
+  --color-text-muted: #888888;
+  
+  --color-btn-primary: #111111;
+  --color-btn-hover: #222222;
+
+  /* Semantic Security Colors */
+  --color-severity-critical: #DC2626;
+  --color-severity-high: #EA580C;
+  --color-severity-medium: #D97706;
+  --color-severity-low: #16A34A;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --bg-workspace: #F7F7F5;
+  --bg-card: #FFFFFF;
+  --border-subtle: #E5E5E0;
+  --text-primary: #111111;
+  --text-secondary: #666666;
 }
 
 body {
   margin: 0;
-  background-color: #0B0F19;
-  color: #F3F4F6;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #F7F7F5;
+  color: #111111;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4D4D0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A8A2;
+}
+
+/* ==================================================
+   LOGO & FLAME MOTION SYSTEM
+   Calm, organic, sophisticated monochrome flame physics
+   ================================================== */
+
+/* Subtle natural flame breathing & micro-flicker */
+@keyframes flameBreatheIdle {
+  0% {
+    transform: translateY(0px) translateX(0px) scaleY(1) scaleX(1);
+    opacity: 0.98;
+  }
+  30% {
+    transform: translateY(-0.8px) translateX(0.25px) scaleY(1.025) scaleX(0.992);
+    opacity: 1;
+  }
+  65% {
+    transform: translateY(-0.3px) translateX(-0.25px) scaleY(1.012) scaleX(1.004);
+    opacity: 0.985;
+  }
+  100% {
+    transform: translateY(0px) translateX(0px) scaleY(1) scaleX(1);
+    opacity: 0.98;
+  }
+}
+
+/* Layered internal flame micro-flicker & soft luminance */
+@keyframes flameFlickerLayer {
+  0%, 100% {
+    opacity: 0.95;
+    filter: brightness(1);
+  }
+  25% {
+    opacity: 1;
+    filter: brightness(1.03);
+  }
+  50% {
+    opacity: 0.96;
+    filter: brightness(0.99);
+  }
+  75% {
+    opacity: 0.99;
+    filter: brightness(1.02);
+  }
+}
+
+/* Layered inner flame core organic movement */
+@keyframes flameInnerCore {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(1);
+    opacity: 0.94;
+  }
+  35% {
+    transform: translateY(-0.7px) translateX(0.3px) scaleY(1.04) scaleX(0.98);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-0.3px) translateX(-0.3px) scaleY(1.015) scaleX(1.01);
+    opacity: 0.96;
+  }
+}
+
+/* Analysis/loading intensified calm cadence */
+@keyframes flameBreatheActive {
+  0% {
+    transform: translateY(0px) translateX(0px) scaleY(1) scaleX(1);
+    opacity: 0.96;
+  }
+  25% {
+    transform: translateY(-1.2px) translateX(0.35px) scaleY(1.038) scaleX(0.99);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-0.35px) translateX(-0.2px) scaleY(1.015) scaleX(1.008);
+    opacity: 0.97;
+  }
+  75% {
+    transform: translateY(-0.95px) translateX(-0.3px) scaleY(1.03) scaleX(0.994);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0px) translateX(0px) scaleY(1) scaleX(1);
+    opacity: 0.96;
+  }
+}
+
+/* Analysis complete settling animation - 400-600ms transition */
+@keyframes flameSettle {
+  0% {
+    transform: translateY(-0.9px) scale(1.025);
+    opacity: 1;
+  }
+  60% {
+    transform: translateY(0.15px) scale(0.995);
+    opacity: 0.98;
+  }
+  100% {
+    transform: translateY(0px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Animation utility classes - base anchored */
+.animate-flame-idle {
+  animation: flameBreatheIdle 4.2s ease-in-out infinite, flameFlickerLayer 3s ease-in-out infinite;
+  transform-origin: 50% 88%;
+}
+
+.animate-flame-analyzing {
+  animation: flameBreatheActive 2.2s ease-in-out infinite, flameFlickerLayer 1.8s ease-in-out infinite;
+  transform-origin: 50% 88%;
+}
+
+.animate-flame-inner {
+  animation: flameInnerCore 2.6s ease-in-out infinite;
+  transform-origin: 50% 88%;
+}
+
+.animate-flame-settle {
+  animation: flameSettle 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: 50% 88%;
+}
+
+/* Grayscale Shimmer Skeleton (NO blue) */
+@keyframes grayscaleShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #F0F0EE 25%, #E5E5E0 50%, #F0F0EE 75%);
+  background-size: 200% 100%;
+  animation: grayscaleShimmer 2.2s infinite linear;
+}
+
+/* Indeterminate sweep bar animation */
+@keyframes sweep {
+  0% {
+    left: -35%;
+  }
+  50% {
+    left: 45%;
+  }
+  100% {
+    left: 105%;
+  }
+}
+
+.animate-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  animation: sweep 1.8s ease-in-out infinite;
+}
+
+/* Micro-interaction transitions */
+.forensic-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E5E0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.forensic-card:hover {
+  border-color: #D4D4CE;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.forensic-button {
+  background-color: #111111;
+  color: #FFFFFF;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.forensic-button:hover {
+  background-color: #222222;
+}
+
+.forensic-button:active {
+  transform: scale(0.98);
+}
+
+/* Progressive reveal for charts & metrics */
+@keyframes progressiveReveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-reveal {
+  animation: progressiveReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Technical texture */
+.technical-grid-pattern {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.technical-grid-light {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Full reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-flame-idle,
+  .animate-flame-analyzing,
+  .animate-flame-settle,
+  .animate-reveal {
+    animation: none !important;
+  }
 }

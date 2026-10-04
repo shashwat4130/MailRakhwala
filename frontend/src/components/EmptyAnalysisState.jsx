@@ -1,35 +1,67 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TerminalSquare, Upload } from 'lucide-react';
+import { UploadCloud, Shield, ArrowRight } from 'lucide-react';
 
+/**
+ * StartAnalysisState / EmptyAnalysisState
+ * 
+ * Consistent, authoritative no-capture state for every analysis-dependent page.
+ * Avoids showing fake scores, empty charts, or 0 findings when no PCAP has been evaluated.
+ */
 export default function EmptyAnalysisState({
-  title = 'No active analysis',
-  description = 'Upload a PCAP or PCAPNG capture first to view forensic analysis and intelligence.',
-  buttonText = 'Capture Ingestion',
+  title = 'START ANALYSIS',
+  description = 'Upload a PCAP to begin email security analysis.',
+  buttonText = 'Start Analysis',
+  supportingText = 'Mail Rakhwala will reconstruct email streams, audit TLS/PKI, evaluate security rules, and generate evidence-linked intelligence.',
+  featureBadge = 'Passive Cryptographic Forensics',
 }) {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-[65vh] items-center justify-center p-6">
-      <div className="w-full max-w-lg rounded-3xl border border-blue-100 bg-white p-8 text-center shadow-[0_18px_55px_rgba(15,76,160,0.08)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0B5ED7]">
-          <TerminalSquare className="h-7 w-7" />
+    <div className="flex min-h-[60vh] items-center justify-center p-6 bg-[#F7F7F5]">
+      <div className="w-full max-w-lg rounded-2xl border border-[#E5E5E0] bg-white p-8 sm:p-10 text-center shadow-sm">
+        {/* Forensic Icon Badge */}
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#111111] text-white shadow-sm">
+          <UploadCloud className="h-6 w-6" strokeWidth={1.8} />
         </div>
-        <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900">
+
+        {/* Feature Eyebrow */}
+        <div className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-[#E5E5E0] bg-[#F7F7F5] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-600">
+          <Shield className="h-3 w-3 text-neutral-800" />
+          {featureBadge}
+        </div>
+
+        {/* Main Title */}
+        <h2 className="mt-4 text-2xl font-black tracking-tight text-[#111111]">
           {title}
         </h2>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+
+        {/* Customized Feature Description */}
+        <p className="mx-auto mt-2.5 max-w-md text-sm leading-relaxed text-[#666666]">
           {description}
         </p>
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[0_8px_24px_rgba(11,94,215,0.20)] transition hover:bg-[#084FB8] active:scale-[0.98]"
-        >
-          <Upload className="h-4 w-4" />
-          {buttonText}
-        </button>
+
+        {/* Standard Supporting Text */}
+        {supportingText && (
+          <p className="mx-auto mt-3 max-w-sm text-xs leading-relaxed text-neutral-400">
+            {supportingText}
+          </p>
+        )}
+
+        {/* Primary Action Button */}
+        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[#111111] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-[#222222] active:scale-[0.98]"
+          >
+            <UploadCloud className="h-4 w-4" />
+            {buttonText}
+            <ArrowRight className="h-3.5 w-3.5 opacity-70" />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+export const StartAnalysisState = EmptyAnalysisState;

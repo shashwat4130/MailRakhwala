@@ -19,10 +19,12 @@ import {
   ExternalLink,
   FileJson,
   FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react';
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { downloadAnalysisPdf, downloadAnalysisJson } from '../services/api';
 import { getSeverityBadge, getStatusBadge, getScoreColor } from '../utils/severity';
 import { formatBytes, formatUtcTimestamp, safeVal, exportToCsv } from '../utils/formatters';
@@ -196,12 +198,19 @@ export default function Reports() {
     setExportNotification('Posture Deductions CSV exported successfully.');
   };
 
-  if (!analysisId) {
-    return <EmptyAnalysisState title="Forensic Reports" />;
+  if (!analysisId || !report) {
+    return (
+      <EmptyAnalysisState
+        title="START ANALYSIS"
+        description="Run an analysis before generating forensic reports."
+        buttonText="Start Analysis"
+        featureBadge="Forensic Reporting"
+      />
+    );
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6 bg-[#F7F7F5]">
       <PageHeader
         category="REPORTING"
         title="Forensic Reports"
@@ -222,14 +231,14 @@ export default function Reports() {
 
       {/* Export Notification Banner */}
       {exportNotification && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 flex items-center justify-between text-xs text-blue-900 shadow-sm">
+        <div className="rounded-xl border border-[#202020] bg-[#111111] p-4 flex items-center justify-between text-xs text-white shadow-sm">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
             <span className="font-medium">{exportNotification}</span>
           </div>
           <button
             onClick={() => setExportNotification(null)}
-            className="text-blue-700 font-bold hover:underline shrink-0"
+            className="text-white/80 font-bold hover:text-white hover:underline shrink-0"
           >
             Dismiss
           </button>
@@ -237,12 +246,11 @@ export default function Reports() {
       )}
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <FileText className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Compiling forensic report and export records...</span>
-          </div>
-        </div>
+        <LoadingState
+          variant="page"
+          title="Forensic Report Generation"
+          message="Compiling executive audit artifacts, cryptographic telemetry, and compliance tables..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">
@@ -254,101 +262,199 @@ export default function Reports() {
       ) : (
         <>
           {/* Consolidated Export Action Center */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-[#E5E5E0] bg-white p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
+                <h3 className="text-base font-bold text-[#111111]">
                   Forensic Export Center
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Download executive reports and forensic data in PDF, raw JSON, and tabular CSV formats.
+                <p className="text-xs text-[#666666] mt-0.5">
+                  Download executive audit reports and forensic data in formal PDF, machine JSON, and structured CSV formats. Card bodies are informational; use the dedicated download buttons below.
                 </p>
               </div>
-              <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-semibold">
+              <span className="text-xs font-mono bg-[#F7F7F5] border border-[#E5E5E0] text-[#111111] px-2.5 py-1 rounded-lg font-bold">
                 5 Export Formats
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
               {/* 1. PDF */}
-              <button
-                onClick={handleDownloadPdf}
-                disabled={downloadingPdf || !report}
-                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-rose-50/50 hover:border-rose-200 transition-all text-left disabled:opacity-50 group"
+              <div
+                className="flex flex-col justify-between p-4 rounded-xl border border-[#E5E5E0] bg-[#FAFAF8] text-left"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700 mb-2 group-hover:scale-105 transition-transform">
-                  <FileText className="h-5 w-5" />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                      PDF
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-[#111111] block">Executive PDF</span>
+                  <span className="text-[11px] text-[#666666] mt-0.5 block leading-tight">
+                    {downloadingPdf ? 'Generating...' : 'ReportLab Audit PDF'}
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">Executive PDF</span>
-                <span className="text-[11px] text-slate-500 mt-0.5">
-                  {downloadingPdf ? 'Generating...' : 'ReportLab Audit PDF'}
-                </span>
-              </button>
+
+                <button
+                  type="button"
+                  aria-label="Download Executive PDF"
+                  onClick={handleDownloadPdf}
+                  disabled={downloadingPdf || !report}
+                  className="w-full mt-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#111111] hover:bg-[#222222] active:bg-black text-white text-[11px] font-bold py-2.5 px-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-1"
+                >
+                  {downloadingPdf ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Download PDF</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
               {/* 2. JSON */}
-              <button
-                onClick={handleDownloadJson}
-                disabled={downloadingJson || !report}
-                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-blue-50/50 hover:border-blue-200 transition-all text-left disabled:opacity-50 group"
+              <div
+                className="flex flex-col justify-between p-4 rounded-xl border border-[#E5E5E0] bg-[#FAFAF8] text-left"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700 mb-2 group-hover:scale-105 transition-transform">
-                  <FileJson className="h-5 w-5" />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#111111] text-white">
+                      <FileJson className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-800 bg-neutral-100 border border-neutral-300 px-1.5 py-0.5 rounded">
+                      JSON
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-[#111111] block">Complete JSON</span>
+                  <span className="text-[11px] text-[#666666] mt-0.5 block leading-tight">
+                    {downloadingJson ? 'Downloading...' : 'Raw Backend Report'}
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">Complete JSON</span>
-                <span className="text-[11px] text-slate-500 mt-0.5">
-                  {downloadingJson ? 'Downloading...' : 'Raw Backend Report'}
-                </span>
-              </button>
+
+                <button
+                  type="button"
+                  aria-label="Download Complete JSON"
+                  onClick={handleDownloadJson}
+                  disabled={downloadingJson || !report}
+                  className="w-full mt-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#111111] hover:bg-[#222222] active:bg-black text-white text-[11px] font-bold py-2.5 px-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-1"
+                >
+                  {downloadingJson ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Downloading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Download JSON</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
               {/* 3. Findings CSV */}
-              <button
-                onClick={handleExportFindingsCsv}
-                disabled={!report}
-                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-emerald-50/50 hover:border-emerald-200 transition-all text-left disabled:opacity-50 group"
+              <div
+                className="flex flex-col justify-between p-4 rounded-xl border border-[#E5E5E0] bg-[#FAFAF8] text-left"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 mb-2 group-hover:scale-105 transition-transform">
-                  <FileSpreadsheet className="h-5 w-5" />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                      <FileSpreadsheet className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                      CSV
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-[#111111] block">Findings CSV</span>
+                  <span className="text-[11px] text-[#666666] mt-0.5 block leading-tight">
+                    {findings.length} Compliance Records
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">Findings CSV</span>
-                <span className="text-[11px] text-slate-500 mt-0.5">
-                  {findings.length} Compliance Records
-                </span>
-              </button>
+
+                <button
+                  type="button"
+                  aria-label="Download Findings CSV"
+                  onClick={handleExportFindingsCsv}
+                  disabled={!report}
+                  className="w-full mt-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#111111] hover:bg-[#222222] active:bg-black text-white text-[11px] font-bold py-2.5 px-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-1"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download CSV</span>
+                </button>
+              </div>
 
               {/* 4. Evidence CSV */}
-              <button
-                onClick={handleExportEvidenceCsv}
-                disabled={!report}
-                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-purple-50/50 hover:border-purple-200 transition-all text-left disabled:opacity-50 group"
+              <div
+                className="flex flex-col justify-between p-4 rounded-xl border border-[#E5E5E0] bg-[#FAFAF8] text-left"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-700 mb-2 group-hover:scale-105 transition-transform">
-                  <FileSpreadsheet className="h-5 w-5" />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
+                      <FileSpreadsheet className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-800 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                      CSV
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-[#111111] block">Evidence CSV</span>
+                  <span className="text-[11px] text-[#666666] mt-0.5 block leading-tight">
+                    Observed Telemetry
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">Evidence CSV</span>
-                <span className="text-[11px] text-slate-500 mt-0.5">
-                  Observed Telemetry
-                </span>
-              </button>
+
+                <button
+                  type="button"
+                  aria-label="Download Evidence CSV"
+                  onClick={handleExportEvidenceCsv}
+                  disabled={!report}
+                  className="w-full mt-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#111111] hover:bg-[#222222] active:bg-black text-white text-[11px] font-bold py-2.5 px-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-1"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download CSV</span>
+                </button>
+              </div>
 
               {/* 5. Deductions CSV */}
-              <button
-                onClick={handleExportDeductionsCsv}
-                disabled={!report}
-                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-amber-50/50 hover:border-amber-200 transition-all text-left disabled:opacity-50 group"
+              <div
+                className="flex flex-col justify-between p-4 rounded-xl border border-[#E5E5E0] bg-[#FAFAF8] text-left"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 mb-2 group-hover:scale-105 transition-transform">
-                  <FileSpreadsheet className="h-5 w-5" />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                      <FileSpreadsheet className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                      CSV
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-[#111111] block">Deductions CSV</span>
+                  <span className="text-[11px] text-[#666666] mt-0.5 block leading-tight">
+                    -{posture?.total_penalty ?? 0} Penalty Points
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">Deductions CSV</span>
-                <span className="text-[11px] text-slate-500 mt-0.5">
-                  -{posture?.total_penalty ?? 0} Penalty Points
-                </span>
-              </button>
+
+                <button
+                  type="button"
+                  aria-label="Download Deductions CSV"
+                  onClick={handleExportDeductionsCsv}
+                  disabled={!report}
+                  className="w-full mt-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#111111] hover:bg-[#222222] active:bg-black text-white text-[11px] font-bold py-2.5 px-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-1"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download CSV</span>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Section Navigation Tabs */}
-          <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto pb-1 text-xs">
+          <div className="flex items-center gap-1 border-b border-[#E5E5E0] overflow-x-auto pb-1 text-xs">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -359,10 +465,10 @@ export default function Reports() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-lg font-semibold border-b-2 transition-all shrink-0 ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-t-xl font-bold border-b-2 transition-all shrink-0 ${
                     isActive
-                      ? 'border-blue-600 text-blue-600 bg-blue-50/40'
-                      : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'border-[#111111] text-[#111111] bg-white shadow-xs'
+                      : 'border-transparent text-[#666666] hover:text-[#111111] hover:bg-[#EAEAE8]'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -375,44 +481,44 @@ export default function Reports() {
           {/* TAB 1: EXECUTIVE SUMMARY */}
           {activeTab === 'summary' && (
             <div className="space-y-6">
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="rounded-2xl border border-[#E5E5E0] bg-white p-6 shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                   <div className="space-y-2">
-                    <span className="text-xs uppercase font-extrabold tracking-wider text-slate-400">
+                    <span className="text-xs uppercase font-extrabold tracking-wider text-neutral-400">
                       Cryptographic Posture Assessment
                     </span>
-                    <h2 className="text-2xl font-black text-slate-900">
+                    <h2 className="text-2xl font-black text-[#111111]">
                       Executive Security Verdict
                     </h2>
-                    <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
+                    <p className="text-xs text-[#666666] max-w-2xl leading-relaxed">
                       This formal audit provides an evidence-based cryptographic evaluation of network
-                      traffic observed in session <span className="font-mono font-semibold text-slate-800">{safeVal(session?.session_id, 'N/A')}</span>.
+                      traffic observed in session <span className="font-mono font-bold text-[#111111]">{safeVal(session?.session_id, 'N/A')}</span>.
                       Scoring is calculated strictly from passive protocol evidence and RFC compliance baselines.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-6 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-8">
+                  <div className="flex items-center gap-6 shrink-0 border-t lg:border-t-0 lg:border-l border-[#E5E5E0] pt-4 lg:pt-0 lg:pl-8">
                     <div>
-                      <span className="text-xs uppercase font-bold text-slate-400 block">
+                      <span className="text-xs uppercase font-bold text-neutral-400 block">
                         Posture Score
                       </span>
                       <div className="flex items-baseline gap-1 mt-1">
-                        <span className={`text-5xl font-black tracking-tight ${isApplicable && score !== null ? scoreColors.text : 'text-slate-400'}`}>
+                        <span className={`text-5xl font-black tracking-tight ${isApplicable && score !== null ? scoreColors.text : 'text-neutral-400'}`}>
                           {isApplicable && score !== null ? score : 'N/A'}
                         </span>
-                        <span className="text-lg font-bold text-slate-400">/ 100</span>
+                        <span className="text-lg font-bold text-neutral-400">/ 100</span>
                       </div>
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-xs uppercase font-bold text-slate-400 block">
+                      <span className="text-xs uppercase font-bold text-neutral-400 block">
                         Risk Rating
                       </span>
                       <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${
                           isApplicable
                             ? getSeverityBadge(posture?.severity).badge
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            : 'bg-[#F7F7F5] text-neutral-700 border border-[#E5E5E0]'
                         }`}
                       >
                         {isApplicable ? (posture?.severity || 'UNKNOWN') : 'NOT APPLICABLE'}
@@ -422,27 +528,27 @@ export default function Reports() {
                 </div>
 
                 {/* Metric Summary Grid */}
-                <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-100 text-xs">
+                <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-[#F0F0EE] text-xs">
                   <div>
-                    <span className="text-slate-400 block">Identified Protocol</span>
-                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                    <span className="text-neutral-400 block">Identified Protocol</span>
+                    <span className="font-bold text-[#111111] text-sm mt-0.5 block">
                       {safeVal(protocol?.detected_protocol, 'Unknown')}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">TLS Evidence</span>
-                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                    <span className="text-neutral-400 block">TLS Evidence</span>
+                    <span className="font-bold text-[#111111] text-sm mt-0.5 block">
                       {protocol?.has_tls ? 'Observed / Present' : 'None Detected'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Evaluated Rules</span>
-                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                    <span className="text-neutral-400 block">Evaluated Rules</span>
+                    <span className="font-bold text-[#111111] text-sm mt-0.5 block">
                       {findings.length} Compliance Checks
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Score Deductions</span>
+                    <span className="text-neutral-400 block">Score Deductions</span>
                     <span className="font-bold text-rose-600 text-sm mt-0.5 block">
                       -{posture?.total_penalty ?? 0} Penalty Points
                     </span>
@@ -459,7 +565,7 @@ export default function Reports() {
                   <div className="divide-y divide-slate-100">
                     {report.recommendations.map((rec, idx) => (
                       <div key={idx} className="py-3 flex items-start gap-3">
-                        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded shrink-0">
+                        <span className="font-mono text-xs font-bold text-[#111111] bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded shrink-0">
                           {rec.rule_id}
                         </span>
                         <div>
@@ -591,7 +697,7 @@ export default function Reports() {
                     <tbody className="divide-y divide-slate-100">
                       {posture.deductions.map((d, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/60">
-                          <td className="py-2.5 px-4 font-mono font-bold text-blue-700">{d.rule_id}</td>
+                          <td className="py-2.5 px-4 font-mono font-bold text-[#111111]">{d.rule_id}</td>
                           <td className="py-2.5 px-4 font-medium text-slate-900">{d.title}</td>
                           <td className="py-2.5 px-4 font-mono text-slate-600">{d.observed_property}</td>
                           <td className="py-2.5 px-4 font-mono font-bold text-rose-700">{String(d.observed_value)}</td>
@@ -630,7 +736,7 @@ export default function Reports() {
                   <tbody className="divide-y divide-slate-100">
                     {findings.map((f, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="py-2.5 px-4 font-mono font-bold text-blue-700">{f.rule_id}</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-[#111111]">{f.rule_id}</td>
                         <td className="py-2.5 px-4 font-medium text-slate-900">{f.title}</td>
                         <td className="py-2.5 px-4 text-slate-500">{safeVal(f.category, 'General').replace(/_/g, ' ')}</td>
                         <td className="py-2.5 px-4">

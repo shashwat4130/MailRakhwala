@@ -19,6 +19,9 @@ export const AnalysisContext = createContext({
   loading: false,
   error: null,
   processingStatus: null,
+  isCaptureModalOpen: false,
+  openCaptureModal: () => {},
+  closeCaptureModal: () => {},
   setAnalysisId: () => {},
   reload: async () => {},
   clear: () => {},
@@ -39,6 +42,10 @@ export function AnalysisProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [processingStatus, setProcessingStatus] = useState(null);
+  const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
+
+  const openCaptureModal = useCallback(() => setIsCaptureModalOpen(true), []);
+  const closeCaptureModal = useCallback(() => setIsCaptureModalOpen(false), []);
 
   const activePollingRef = useRef(null);
 
@@ -194,6 +201,9 @@ export function AnalysisProvider({ children }) {
         loading,
         error,
         processingStatus,
+        isCaptureModalOpen,
+        openCaptureModal,
+        closeCaptureModal,
         setAnalysisId: changeAnalysisId,
         reload,
         clear,

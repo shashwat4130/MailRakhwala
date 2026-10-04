@@ -66,7 +66,7 @@ export const statusBadgeClasses = (status) => {
     case 'NOT_APPLICABLE':
       return 'border border-slate-200 bg-slate-100 text-slate-600';
     default:
-      return 'border border-blue-200 bg-blue-50 text-blue-700';
+      return 'border border-slate-200 bg-slate-50 text-slate-600';
   }
 };
 
@@ -82,7 +82,7 @@ export const getStatusBadge = (status) => ({
 export const getScoreTone = (score) => {
   if (score === null || score === undefined) return { tone: 'slate', label: 'Not Assessed', bg: 'bg-slate-100 text-slate-700 border-slate-200' };
   if (score >= 80) return { tone: 'emerald', label: 'Strong Posture', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-  if (score >= 60) return { tone: 'amber', label: 'Moderate Risk', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
+  if (score >= 60) return { tone: 'amber', label: 'Needs Attention', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
   if (score >= 30) return { tone: 'orange', label: 'High Risk', bg: 'bg-orange-50 text-orange-700 border-orange-200' };
   return { tone: 'red', label: 'Critical Risk', bg: 'bg-red-50 text-red-700 border-red-200' };
 };
@@ -92,8 +92,8 @@ export const getScoreColor = (score) => {
   let text = 'text-slate-900';
   if (score !== null && score !== undefined) {
     if (score >= 80) text = 'text-emerald-600';
-    else if (score >= 60) text = 'text-blue-600';
-    else if (score >= 30) text = 'text-amber-600';
+    else if (score >= 60) text = 'text-amber-600';
+    else if (score >= 30) text = 'text-orange-600';
     else text = 'text-rose-600';
   }
   return { ...tone, text };

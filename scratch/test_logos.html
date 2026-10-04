@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: sans-serif; background: #333; color: white; padding: 20px; }
+    .box { display: inline-block; margin: 15px; padding: 15px; border: 1px solid #666; }
+    .light { background: #F7F7F5; color: #111; }
+    .dark { background: #111111; color: #fff; }
+    video { max-width: 300px; display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Logo Video Variations on Light & Dark</h2>
+  
+  <div class="box light">
+    <h3>logo.mp4 (Normal) on Light</h3>
+    <video src="../frontend/public/mailrakhwala-logo.mp4" autoplay muted loop playsinline></video>
+    <h3>logo.mp4 (mix-blend-multiply)</h3>
+    <video src="../frontend/public/mailrakhwala-logo.mp4" autoplay muted loop playsinline style="mix-blend-multiply"></video>
+  </div>
+
+  <div class="box dark">
+    <h3>logo.mp4 on Dark (#111111)</h3>
+    <video src="../frontend/public/mailrakhwala-logo.mp4" autoplay muted loop playsinline></video>
+    <h3>logo.mp4 (mix-blend-screen / invert)</h3>
+    <video src="../frontend/public/mailrakhwala-logo.mp4" autoplay muted loop playsinline style="filter: invert(1); mix-blend-mode: screen;"></video>
+  </div>
+
+  <div class="box dark">
+    <h3>logo1.mp4 on Dark</h3>
+    <video src="../frontend/public/mailrakhwala-logo1.mp4" autoplay muted loop playsinline></video>
+    <h3>logo2.mp4 on Dark</h3>
+    <video src="../frontend/public/mailrakhwala-logo2.mp4" autoplay muted loop playsinline></video>
+  </div>
+</body>
+</html>

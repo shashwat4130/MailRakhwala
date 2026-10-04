@@ -1,15 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BrowserRouter,
   Routes,
   Route,
-  Navigate,
   NavLink,
+  useLocation,
+  useNavigate,
+  Navigate,
 } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { Menu, BookOpen, UploadCloud, RefreshCw } from 'lucide-react';
 
 import { AnalysisProvider, useAnalysisContext } from './context/AnalysisContext';
 import Sidebar, { MobileSidebarDrawer } from './components/Sidebar';
+import MailRakhwalaLogo from './components/MailRakhwalaLogo';
+import CaptureModal from './components/CaptureModal';
+
+import { motion } from 'framer-motion';
+
+// Synchronously clear active session and reset browser history to '/' strictly on initial document load or full browser reload
+// (runs only once on script execution; never during in-app client-side navigation)
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('active_analysis_id');
+    localStorage.removeItem('analysis_id');
+    sessionStorage.clear();
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/');
+    }
+  } catch (_) {}
+}
 
 // 8 Primary Pages + Ingestion & Documentation
 import Home from './pages/Home';
@@ -23,38 +42,22 @@ import RiskIntelligence from './pages/RiskIntelligence';
 import Reports from './pages/Reports';
 import Documentation from './pages/Documentation';
 
+// Route Aliases
+import SecurityAnalytics from './pages/SecurityAnalytics';
+import SecurityRules from './pages/SecurityRules';
+import AnomalyDetection from './pages/AnomalyDetection';
+import ThreatContext from './pages/ThreatContext';
+import MLExplainability from './pages/MLExplainability';
+import AnalysisSettings from './pages/AnalysisSettings';
+import ExportEvidence from './pages/ExportEvidence';
+
 /**
  * RequireAnalysisSession
  * 
- * Strict route guard for analysis-dependent features:
- * - /dashboard
- * - /analysis and /stream-analysis
- * - /tls-analysis
- * - /evidence and /evidence-explorer
- * - /findings
- * - /posture and /security-posture
- * - /risk-intelligence
- * - /reports and /forensic-reports
- * 
- * If no active session ID exists (neither in React context nor in persistent localStorage),
- * navigating to any of these routes redirects immediately to Home (/).
- * 
- * When a valid analysis session is active, the session survives browser refreshes
- * and direct URL entries.
+ * Allows direct URL navigation and refresh while allowing every analysis page
+ * to gracefully render its customized EmptyAnalysisState when no PCAP is active.
  */
 function RequireAnalysisSession({ children }) {
-  const { analysisId } = useAnalysisContext();
-  const storedId =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('active_analysis_id') || localStorage.getItem('analysis_id')
-      : null;
-
-  const activeId = analysisId || storedId;
-
-  if (!activeId) {
-    return <Navigate to="/" replace />;
-  }
-
   return children;
 }
 
@@ -75,28 +78,28 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-[70vh] items-center justify-center p-8 bg-white">
-          <div className="max-w-md w-full rounded-3xl border border-red-200 bg-red-50/50 p-8 text-center shadow-lg">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 mb-4">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+        <div className="flex min-h-[70vh] items-center justify-center p-8 bg-[#F7F7F5]">
+          <div className="max-w-md w-full rounded-2xl border border-[#E5E5E0] bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#111111] text-white mb-4">
+              <RefreshCw className="w-5 h-5" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong loading this analysis.</h2>
-            <p className="text-xs text-slate-600 mb-6 leading-relaxed">
-              {this.state.error?.message || 'An unexpected rendering error occurred.'}
+            <h2 className="text-xl font-bold text-[#111111] mb-2">
+              Console Rendering Discrepancy
+            </h2>
+            <p className="text-xs text-[#666666] mb-6 leading-relaxed">
+              {this.state.error?.message || 'An unexpected rendering error occurred in this view.'}
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={() => this.setState({ hasError: false, error: null })}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow hover:bg-blue-700 transition"
+                className="px-4 py-2 rounded-lg bg-[#111111] text-white text-xs font-bold uppercase tracking-wider shadow hover:bg-[#222222] transition"
               >
-                Try Again
+                Retry View
               </button>
               <a
                 href="/"
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition"
+                className="px-4 py-2 rounded-lg border border-[#E5E5E0] bg-white text-xs font-bold text-[#111111] hover:bg-[#F7F7F5] transition"
               >
                 Return to Home
               </a>
@@ -111,43 +114,44 @@ class ErrorBoundary extends React.Component {
 
 function ApplicationShell({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans antialiased">
-      {/* Responsive Mobile Header */}
-      <header className="flex h-16 items-center justify-between border-b border-blue-100 bg-white px-4 lg:hidden sticky top-0 z-40">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-slate-700 hover:text-blue-600 transition"
-          aria-label="Open navigation sidebar"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <NavLink to="/" className="relative h-[48px] w-[140px] flex items-center">
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            src="/mailrakhwala-logo.mp4"
-            className="h-full w-full object-contain"
-            aria-label="MailRakhwala"
-          />
-        </NavLink>
-        <div className="w-10" />
-      </header>
+    <div className="min-h-screen bg-[#F7F7F5] text-[#111111] font-sans antialiased flex flex-row">
+      {/* Global Capture Modal (Triggered via Sidebar or anywhere) */}
+      <CaptureModal />
 
       {/* Shared Responsive Mobile Drawer */}
       <MobileSidebarDrawer isOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      {/* Main Layout */}
-      <div className="flex min-h-[calc(100vh-4rem)] lg:min-h-screen">
-        <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto bg-white">
-          <div className="w-full min-h-full">
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </div>
+      {/* Desktop Sticky Sidebar - Full Viewport 100vh, always accessible */}
+      <Sidebar />
+
+      {/* Minimal Floating Mobile Trigger on small viewports */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-3.5 left-3.5 z-40 lg:hidden flex h-9 w-9 items-center justify-center rounded-xl bg-[#111111] text-white shadow-md hover:bg-[#222222] transition active:scale-95"
+        aria-label="Open navigation menu"
+      >
+        <Menu className="h-4.5 w-4.5" />
+      </button>
+
+      {/* Main Application Area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Page Content with Subtle Route Transition */}
+        <main className="flex-1 min-w-0 bg-[#F7F7F5]">
+          <ErrorBoundary>
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="min-h-full"
+            >
+              {children}
+            </motion.div>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
@@ -183,6 +187,16 @@ export default function App() {
 
           {/* 2. Stream Analysis */}
           <Route
+            path="/streams"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <Analysis />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
             path="/analysis"
             element={
               <RequireAnalysisSession>
@@ -204,6 +218,16 @@ export default function App() {
           />
 
           {/* 3. TLS Analysis */}
+          <Route
+            path="/tls"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <TLSAnalysis />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
           <Route
             path="/tls-analysis"
             element={
@@ -305,7 +329,7 @@ export default function App() {
             }
           />
 
-          {/* Reference / Documentation */}
+          {/* Reference: Documentation */}
           <Route
             path="/documentation"
             element={
@@ -315,21 +339,119 @@ export default function App() {
             }
           />
 
-          {/* Backward-compatible redirects for consolidated destinations */}
-          <Route path="/anomaly-detection" element={<Navigate to="/risk-intelligence?tab=anomaly" replace />} />
-          <Route path="/threat-context" element={<Navigate to="/risk-intelligence?tab=threats" replace />} />
-          <Route path="/explainability" element={<Navigate to="/risk-intelligence?tab=shap" replace />} />
-          <Route path="/ml-explainability" element={<Navigate to="/risk-intelligence?tab=shap" replace />} />
-          <Route path="/feature-vector" element={<Navigate to="/risk-intelligence?tab=feature-vector" replace />} />
-          <Route path="/rules" element={<Navigate to="/posture" replace />} />
-          <Route path="/security-rules" element={<Navigate to="/posture" replace />} />
-          <Route path="/analytics" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/security-analytics" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/export-evidence" element={<Navigate to="/reports" replace />} />
-          <Route path="/settings" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/analysis-settings" element={<Navigate to="/dashboard" replace />} />
+          {/* Aliases & Internal Intelligence Views */}
+          <Route
+            path="/analytics"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <SecurityAnalytics />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/security-analytics"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <SecurityAnalytics />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/rules"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <SecurityRules />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/security-rules"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <SecurityRules />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/anomaly-detection"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <AnomalyDetection />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/threat-context"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <ThreatContext />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/explainability"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <MLExplainability />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/ml-explainability"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <MLExplainability />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <AnalysisSettings />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/analysis-settings"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <AnalysisSettings />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
+          <Route
+            path="/export-evidence"
+            element={
+              <RequireAnalysisSession>
+                <ApplicationShell>
+                  <ExportEvidence />
+                </ApplicationShell>
+              </RequireAnalysisSession>
+            }
+          />
 
-          {/* Fallback */}
+          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

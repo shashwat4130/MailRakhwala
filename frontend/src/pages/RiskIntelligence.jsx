@@ -39,6 +39,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { getSeverityBadge } from '../utils/severity';
 import { safeVal } from '../utils/formatters';
 import {
@@ -55,12 +56,14 @@ import {
   getPostureDeductions,
   getAuthoritativeStarttlsFinding,
   getAuthoritativeStarttlsDeduction,
+  getReportAnalytics,
+  CANONICAL_RULES_COUNT,
 } from '../utils/reportModel';
 
 const RISK_CLASS_COLORS = {
   LOW: '#10b981',      // Emerald
-  MEDIUM: '#3b82f6',   // Blue
-  HIGH: '#f59e0b',     // Amber
+  MEDIUM: '#f59e0b',   // Amber
+  HIGH: '#f97316',     // Orange
   CRITICAL: '#ef4444', // Red
 };
 
@@ -102,6 +105,7 @@ export default function RiskIntelligence() {
   const canonicalFeatures = useMemo(() => getCanonicalFeatures(report), [report]);
   const postureScore = getPostureScore(report);
   const posture = report?.posture_report;
+  const analytics = useMemo(() => getReportAnalytics(report), [report]);
   const findings = useMemo(() => getComplianceFindings(report), [report]);
   const deductions = useMemo(() => getPostureDeductions(report), [report]);
   const threats = report?.threat_mappings || [];
@@ -132,19 +136,23 @@ export default function RiskIntelligence() {
   const isAnomalyAvailable = anomaly && anomaly.available !== false && anomaly.is_anomalous !== null && typeof anomaly.anomaly_score === 'number';
   const isShapAvailable = shap && shap.available !== false && Boolean(shap.predicted_class || shap.prediction);
 
-  // Class probabilities for XGBoost
+  // Class probabilities for XGBoost (Requirement 12: mostly grayscale distribution + highlight predicted class)
   const probData = useMemo(() => {
     if (!isMlRiskAvailable || !risk?.class_probabilities) return [];
     const canonicalOrder = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
     return canonicalOrder
       .filter((className) => className in risk.class_probabilities)
-      .map((className) => ({
-        name: className,
-        probability: typeof risk.class_probabilities[className] === 'number'
-          ? Number((risk.class_probabilities[className] * 100).toFixed(1))
-          : 0,
-        color: RISK_CLASS_COLORS[className] || '#64748b',
-      }));
+      .map((className) => {
+        const isPredicted = className === risk.predicted_class;
+        return {
+          name: className,
+          probability: typeof risk.class_probabilities[className] === 'number'
+            ? Number((risk.class_probabilities[className] * 100).toFixed(1))
+            : 0,
+          color: isPredicted ? '#111111' : '#D4D4D0',
+          isPredicted,
+        };
+      });
   }, [risk, isMlRiskAvailable]);
 
   // SHAP waterfall data
@@ -163,16 +171,61 @@ export default function RiskIntelligence() {
       }));
   }, [shap, isShapAvailable]);
 
-  // Grouped feature vector by functional domain
-  const groupedFeatures = useMemo(() => {
-    const groups = {};
-    canonicalFeatures.forEach((feat) => {
-      if (!groups[feat.domain]) {
-        groups[feat.domain] = [];
-      }
-      groups[feat.domain].push(feat);
+  // 19D Feature Representation Grouped into 7 Canonical Domains (Requirement 13)
+  const categorized19DFeatures = useMemo(() => {
+    const categoryMapping = {
+      'TLS': [
+        'tls_version_numeric',
+        'cipher_security_score',
+        'key_exchange_strength',
+        'pfs_enabled',
+      ],
+      'Certificate/PKI': [
+        'certificate_key_size',
+        'certificate_signature_strength',
+        'certificate_validity_status',
+        'san_present',
+        'hostname_match_status',
+        'trust_validation_status',
+        'revocation_status',
+      ],
+      'STARTTLS': [
+        'starttls_downgrade',
+      ],
+      'Findings': [
+        'compliance_violation_count',
+        'unknown_finding_count',
+        'high_critical_finding_count',
+      ],
+      'Threat Intelligence': [
+        'vulnerability_count',
+        'threat_mapping_count',
+      ],
+      'Cryptography': [
+        'cryptographic_security_score',
+      ],
+      'JA4': [
+        'ja4_available',
+      ],
+    };
+
+    return Object.entries(categoryMapping).map(([catName, keys]) => {
+      const feats = keys.map((key) => {
+        const found = canonicalFeatures.find((f) => f.key === key);
+        if (found) return { ...found, category: catName };
+        return {
+          key,
+          name: key.replace(/_/g, ' '),
+          category: catName,
+          value: null,
+          interpretation: 'Not available from capture',
+        };
+      });
+      return {
+        category: catName,
+        features: feats,
+      };
     });
-    return groups;
   }, [canonicalFeatures]);
 
   // Threat categories
@@ -213,15 +266,23 @@ export default function RiskIntelligence() {
     });
   }, [vulnerabilities, vulnSearch]);
 
-  if (!analysisId) {
-    return <EmptyAnalysisState title="Risk Intelligence" />;
+  if (!analysisId || !report) {
+    return (
+      <EmptyAnalysisState
+        title="START ANALYSIS"
+        description="Run an analysis to generate statistical and explainable risk intelligence."
+        buttonText="Start Analysis"
+        supportingText="Mail Rakhwala will reconstruct email streams, audit TLS/PKI, evaluate security rules, and generate evidence-linked intelligence."
+        featureBadge="Statistical Risk Intelligence"
+      />
+    );
   }
 
   const deterministicSeverity = isApplicable ? (posture?.severity || 'UNKNOWN') : 'NOT_APPLICABLE';
   const mlPredictedClass = isMlRiskAvailable ? risk.predicted_class : null;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6 bg-[#F7F7F5]">
       <PageHeader
         category="INTELLIGENCE"
         title="Risk Intelligence"
@@ -231,14 +292,12 @@ export default function RiskIntelligence() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <Compass className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Synthesizing risk models & forensic telemetry...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="Risk Intelligence Synthesis"
+          message="Contrasting deterministic scoring against statistical ML, 19D vectors, and SHAP explainability..."
+        />
       ) : error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
           <div className="flex items-center gap-3">
             <AlertTriangle className="h-6 w-6 text-red-600" />
             <span className="font-semibold">Failed to load risk intelligence</span>
@@ -249,7 +308,7 @@ export default function RiskIntelligence() {
         <>
           {/* Non-Email Informational Notice if applicable */}
           {!isApplicable && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs text-amber-900 flex items-start gap-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-sm block mb-0.5">
@@ -261,7 +320,7 @@ export default function RiskIntelligence() {
           )}
 
           {/* Sub-Navigation Tabs */}
-          <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 overflow-x-auto text-xs">
+          <div className="flex items-center gap-1.5 border-b border-[#E5E5E0] pb-2 overflow-x-auto text-xs">
             {SECTIONS.map((sec) => {
               const Icon = sec.icon;
               const isActive = activeTab === sec.id;
@@ -269,10 +328,10 @@ export default function RiskIntelligence() {
                 <button
                   key={sec.id}
                   onClick={() => setActiveTab(sec.id)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition-all shrink-0 ${
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold transition-all shrink-0 ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900'
+                      ? 'bg-[#111111] text-white shadow-sm'
+                      : 'text-[#666666] bg-white border border-[#E5E5E0] hover:bg-[#F7F7F5] hover:text-[#111111]'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -288,22 +347,22 @@ export default function RiskIntelligence() {
               {/* Dual-Engine Comparative Banners */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Engine A: Deterministic Cryptographic Posture */}
-                <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/40 via-white to-slate-50/30 p-6 shadow-sm flex flex-col justify-between">
+                <div className="rounded-2xl border border-[#E5E5E0] bg-white p-6 shadow-sm flex flex-col justify-between">
                   <div className="space-y-4">
                     {/* Header */}
                     <div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <ShieldCheck className="h-5 w-5 text-blue-600" />
-                          <span className="text-xs uppercase font-extrabold tracking-wider text-blue-900">
+                          <ShieldCheck className="h-5 w-5 text-[#111111]" />
+                          <span className="text-xs uppercase font-extrabold tracking-wider text-[#111111]">
                             AUTHORITATIVE SECURITY ENGINE
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
+                        <span className="text-[10px] font-mono bg-neutral-100 text-neutral-800 border border-neutral-200 px-2 py-0.5 rounded font-semibold">
                           100% REPRODUCIBLE (RFC COMPLIANCE)
                         </span>
                       </div>
-                      <p className="mt-1.5 text-xs text-slate-500 font-medium">
+                      <p className="mt-1.5 text-xs text-[#666666] font-medium">
                         Evaluate observed email traffic against explicit deterministic security rules.
                       </p>
                     </div>
@@ -314,7 +373,7 @@ export default function RiskIntelligence() {
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
                           AUTHORITATIVE VERDICT
                         </span>
-                        <span className="text-[10px] font-semibold text-blue-700">19 Rules in Scope</span>
+                        <span className="text-[10px] font-semibold text-neutral-600">19 Canonical Rules</span>
                       </div>
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <div className="flex items-baseline gap-2.5">
@@ -336,9 +395,20 @@ export default function RiskIntelligence() {
                         </div>
                         {isApplicable && postureScore !== null && (
                           <span className="text-xs font-mono font-semibold text-rose-600">
-                            Total Deductions: -{100 - postureScore} pts
+                            Total Deductions: −{analytics.totalPenalty} pts
                           </span>
                         )}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-neutral-50 rounded-lg border border-neutral-200 p-2.5">
+                        <div>
+                          <span className="text-[9px] text-neutral-500 uppercase tracking-wider block font-bold">Unique Violated Rules</span>
+                          <span className="font-black text-[#111111] text-sm">{analytics.uniqueViolatedRulesCount}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-neutral-500 uppercase tracking-wider block font-bold">Finding Instances</span>
+                          <span className="font-black text-[#111111] text-sm">{analytics.totalFindings}</span>
+                        </div>
                       </div>
                     </div>
 
@@ -346,48 +416,44 @@ export default function RiskIntelligence() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                          TOP VERIFIED FINDINGS ({authoritativeFindings.length})
+                          TOP VERIFIED FINDINGS ({analytics.uniqueViolatedRules.length})
                         </span>
                         <button
                           onClick={() => setActiveTab('threats')}
-                          className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                          className="text-[10px] font-semibold text-neutral-700 hover:text-[#111111] flex items-center gap-0.5"
                         >
                           <span>Evidence Explorer</span>
                           <ArrowRight className="h-3 w-3" />
                         </button>
                       </div>
 
-                      {authoritativeFindings.length > 0 ? (
+                      {analytics.uniqueViolatedRules.length > 0 ? (
                         <div className="space-y-2">
-                          {authoritativeFindings.slice(0, 3).map((finding) => {
-                            const deduction = posture?.deductions?.find(
-                              (d) => d.rule_id === finding.rule_id || d.upstream_rule_id === finding.rule_id
-                            );
-                            const penalty = deduction?.penalty;
+                          {analytics.uniqueViolatedRules.slice(0, 3).map((rule) => {
                             return (
                               <div
-                                key={finding.finding_id || finding.rule_id}
+                                key={rule.ruleId}
                                 className="rounded-xl border border-rose-200 bg-rose-50/60 p-2.5 text-xs text-rose-900 space-y-1"
                               >
                                 <div className="font-bold flex items-center justify-between">
                                   <span className="flex items-center gap-1.5 text-rose-950 font-extrabold truncate max-w-[280px]">
                                     <AlertTriangle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
-                                    {finding.rule_id}: {finding.title}
+                                    {rule.ruleId}: {rule.title}
                                   </span>
                                   <span
                                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                      getSeverityBadge(finding.severity).badge
+                                      getSeverityBadge(rule.severity).badge
                                     }`}
                                   >
-                                    {finding.severity}
+                                    {rule.severity}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between text-[10px] text-slate-600 pt-0.5">
-                                  <span className="font-mono truncate max-w-[200px]">
-                                    {finding.evidence?.observed_property ? `${finding.evidence.observed_property} = ${String(finding.evidence.observed_value)}` : finding.description}
+                                  <span className="font-mono">
+                                    {rule.instances.length} {rule.instances.length === 1 ? 'evidence instance' : 'evidence instances'}
                                   </span>
-                                  {typeof penalty === 'number' && (
-                                    <span className="font-bold text-rose-700 shrink-0">-{penalty} pts</span>
+                                  {rule.penaltyApplied > 0 && (
+                                    <span className="font-bold text-rose-700 shrink-0">−{rule.penaltyApplied} pts applied</span>
                                   )}
                                 </div>
                               </div>
@@ -404,34 +470,34 @@ export default function RiskIntelligence() {
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-blue-100 flex items-center justify-between text-xs text-slate-500">
-                    <span><strong className="text-slate-800">{evaluatedFindingsCount}</strong> Rules Evaluated</span>
-                    <span>Engine: <strong className="text-slate-800">RFC Conformance v{posture?.engine_version || '1.0'}</strong></span>
+                  <div className="mt-6 pt-4 border-t border-[#E5E5E0] flex items-center justify-between text-xs text-slate-500">
+                    <span><strong className="text-slate-800">{analytics.totalFindings}</strong> Finding Instances</span>
+                    <span>Engine: <strong className="text-slate-800">RFC Conformance (19 Canonical Rules)</strong></span>
                   </div>
                 </div>
 
                 {/* Engine B: Supervised XGBoost ML Risk Classification */}
-                <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/40 via-white to-slate-50/30 p-6 shadow-sm flex flex-col justify-between">
+                <div className="rounded-2xl border border-[#E5E5E0] bg-white p-6 shadow-sm flex flex-col justify-between">
                   <div className="space-y-4">
                     {/* Header */}
                     <div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Brain className="h-5 w-5 text-indigo-600" />
-                          <span className="text-xs uppercase font-extrabold tracking-wider text-indigo-900">
+                          <Brain className="h-5 w-5 text-[#111111]" />
+                          <span className="text-xs uppercase font-extrabold tracking-wider text-[#111111]">
                             STATISTICAL ML INTELLIGENCE
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-semibold">
+                          <span className="text-[10px] font-mono bg-neutral-100 text-neutral-800 border border-neutral-200 px-2 py-0.5 rounded font-semibold">
                             XGBOOST
                           </span>
-                          <span className="text-[10px] font-mono bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-semibold">
+                          <span className="text-[10px] font-mono bg-neutral-100 text-neutral-800 border border-neutral-200 px-2 py-0.5 rounded font-semibold">
                             Statistical Risk Model
                           </span>
                         </div>
                       </div>
-                      <p className="mt-1.5 text-xs text-slate-500 font-medium">
+                      <p className="mt-1.5 text-xs text-[#666666] font-medium">
                         Analyze the canonical 19-dimensional security representation for statistical risk patterns.
                       </p>
                     </div>
@@ -442,7 +508,7 @@ export default function RiskIntelligence() {
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
                           STATISTICAL PREDICTION
                         </span>
-                        <span className="text-[10px] font-semibold text-indigo-700">19D Feature Space</span>
+                        <span className="text-[10px] font-semibold text-neutral-600">19D Feature Space</span>
                       </div>
 
                       {!isApplicable ? (
@@ -467,7 +533,7 @@ export default function RiskIntelligence() {
                           {(typeof risk.confidence === 'number' || typeof risk.probabilities?.[mlPredictedClass] === 'number') && (
                             <span className="text-xs text-slate-600">
                               Probability:{' '}
-                              <strong className="text-indigo-900 font-mono font-bold">
+                              <strong className="text-[#111111] font-mono font-bold">
                                 {((typeof risk.confidence === 'number' ? risk.confidence : risk.probabilities[mlPredictedClass]) * 100).toFixed(1)}%
                               </strong>
                             </span>
@@ -496,7 +562,7 @@ export default function RiskIntelligence() {
                               key={p.name}
                               className={`rounded-lg p-1.5 text-center border ${
                                 p.name === mlPredictedClass
-                                  ? 'border-indigo-300 bg-indigo-50/70 font-bold'
+                                  ? 'border-[#111111] bg-neutral-100 font-bold'
                                   : 'border-slate-100 bg-slate-50/60'
                               }`}
                             >
@@ -509,14 +575,14 @@ export default function RiskIntelligence() {
                     )}
 
                     {/* Top 3 SHAP Signals */}
-                    <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-3 space-y-2">
+                    <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-900">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#111111]">
                           TOP 3 SHAP SIGNALS
                         </span>
                         <button
                           onClick={() => setActiveTab('shap')}
-                          className="text-[10px] font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-0.5"
+                          className="text-[10px] font-semibold text-neutral-700 hover:text-[#111111] flex items-center gap-0.5"
                         >
                           <span>Explore SHAP</span>
                           <ArrowRight className="h-3 w-3" />
@@ -526,7 +592,7 @@ export default function RiskIntelligence() {
                       {shapData && shapData.length > 0 ? (
                         <div className="space-y-1.5">
                           {shapData.slice(0, 3).map((s, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-xs bg-white/70 rounded-lg px-2.5 py-1.5 border border-purple-100">
+                            <div key={idx} className="flex items-center justify-between text-xs bg-white rounded-lg px-2.5 py-1.5 border border-neutral-200">
                               <span className="font-mono text-[11px] text-slate-800 truncate max-w-[220px]">
                                 {s.rawKey}
                               </span>
@@ -548,7 +614,7 @@ export default function RiskIntelligence() {
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-indigo-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-6 pt-4 border-t border-[#E5E5E0] flex items-center justify-between text-xs text-slate-500">
                     <span className="italic">Secondary statistical signal — does not modify authoritative posture.</span>
                   </div>
                 </div>
@@ -588,10 +654,10 @@ export default function RiskIntelligence() {
                             if (active && payload && payload.length) {
                               const data = payload[0].payload;
                               return (
-                                <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg text-xs">
-                                  <p className="font-semibold text-slate-800">{data.name} Risk</p>
-                                  <p className="text-slate-500 font-mono mt-1">
-                                    Probability: <strong className="text-blue-600">{data.probability}%</strong>
+                                <div className="rounded-lg border border-[#222222] bg-[#111111] p-2.5 shadow-lg text-xs text-white">
+                                  <p className="font-semibold text-white">{data.name} Risk</p>
+                                  <p className="text-neutral-400 font-mono mt-1">
+                                    Probability: <strong className="text-white">{data.probability}%</strong>
                                   </p>
                                 </div>
                               );
@@ -773,9 +839,9 @@ export default function RiskIntelligence() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 via-white to-slate-50 p-6 shadow-sm">
+                <div className="rounded-2xl border border-[#E5E5E0] bg-[#F7F7F5] p-6 shadow-sm">
                   <div className="flex items-start gap-4">
-                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-white">
                       <Info className="h-6 w-6" />
                     </div>
                     <div>
@@ -795,7 +861,7 @@ export default function RiskIntelligence() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                    <Cpu className="h-4 w-4 text-blue-600" /> Model Algorithm
+                    <Cpu className="h-4 w-4 text-[#111111]" /> Model Algorithm
                   </div>
                   <div className="mt-2 text-lg font-bold text-slate-900">
                     {anomaly?.model_metadata?.model_name || 'IsolationForest'}
@@ -885,45 +951,83 @@ export default function RiskIntelligence() {
                         19-dimensional mathematical representation evaluated across 5 functional categories
                       </p>
                     </div>
-                    <span className="text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-1 rounded font-semibold">
-                      19 Dimensions Verified
+                    <span className="text-xs font-mono bg-white text-[#111111] border border-[#E5E5E0] px-2.5 py-1 rounded-lg font-bold shadow-xs">
+                      19 Canonical Dimensions Verified
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Object.entries(groupedFeatures).map(([domain, feats]) => (
-                      <div key={domain} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                            {domain}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-400 font-bold">
-                            {feats.length} feat.
-                          </span>
+                    {categorized19DFeatures.map((cat) => (
+                      <div key={cat.category} className="rounded-2xl border border-[#E5E5E0] bg-white p-5 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between border-b border-[#E5E5E0] pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-[#111111]">
+                              {cat.category}
+                            </span>
+                            <span className="text-[10px] font-mono text-neutral-400 font-bold px-1.5 py-0.2 rounded bg-[#F7F7F5] border border-[#E5E5E0]">
+                              {cat.features.length} {cat.features.length === 1 ? 'dim' : 'dims'}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="space-y-2 text-xs">
-                          {feats.map((f) => (
-                            <div key={f.key} className="flex items-center justify-between gap-2 py-1 border-b border-slate-50 last:border-0">
-                              <span className="text-slate-600 truncate" title={f.name}>{f.name}</span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {f.mismatch && (
-                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800" title={f.mismatch.message}>
-                                    Mismatch
+                        <div className="space-y-2.5">
+                          {cat.features.map((f) => {
+                            const isNull = f.value === null || f.value === undefined;
+                            const isZero = f.value === 0 || f.value === 0.0;
+                            const isNA = f.value === -1 || f.value === -1.0;
+
+                            return (
+                              <div key={f.key} className="p-2.5 rounded-xl border border-[#F0F0EB] bg-[#FAFAF8] space-y-1.5 transition hover:border-[#D0D0CA]">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-bold text-[#111111] truncate" title={f.name}>
+                                    {f.name}
                                   </span>
-                                )}
-                                <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
-                                  f.value === -1.0
-                                    ? 'bg-slate-100 text-slate-500'
-                                    : f.value === 0.0
-                                    ? (f.mismatch ? 'bg-amber-100 text-amber-900 font-extrabold ring-1 ring-amber-300' : 'bg-slate-100 text-slate-800')
-                                    : 'bg-emerald-50 text-emerald-800'
-                                }`}>
-                                  {f.value !== null ? f.value : 'null'}
-                                </span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {f.mismatch && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300" title={f.mismatch.message}>
+                                        Mismatch
+                                      </span>
+                                    )}
+                                    {isNull ? (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono text-neutral-500 bg-[#EAEAE8] border border-[#D5D5D0]">
+                                        null
+                                      </span>
+                                    ) : isNA ? (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono text-neutral-500 bg-[#EAEAE8] border border-[#D5D5D0]">
+                                        −1.0 (N/A)
+                                      </span>
+                                    ) : isZero ? (
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                        f.mismatch ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-[#EAEAE8] text-[#111111] border border-[#D5D5D0]'
+                                      }`}>
+                                        0.0
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#111111] text-white shadow-xs">
+                                        {f.value}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Normalized Analytical Feature Bar */}
+                                <div className="h-1.5 w-full bg-[#E5E5E0] rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      isNull || isNA ? 'w-0' : isZero ? 'w-1 bg-neutral-400' : 'bg-[#111111]'
+                                    }`}
+                                    style={{
+                                      width: isNull || isNA ? '0%' : isZero ? '4%' : `${Math.min(100, Math.max(10, f.value > 10 ? f.value : f.value * 25))}%`,
+                                    }}
+                                  />
+                                </div>
+
+                                <p className="text-[10px] text-[#666666] leading-relaxed truncate" title={f.interpretation}>
+                                  {f.interpretation}
+                                </p>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -1010,21 +1114,21 @@ export default function RiskIntelligence() {
             <div className="space-y-6">
               {isShapAvailable ? (
                 <>
-                  <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/60 via-white to-slate-50 p-6 shadow-sm">
+                  <div className="rounded-2xl border border-[#E5E5E0] bg-white p-6 shadow-sm">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4">
-                        <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                        <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-white">
                           <Brain className="h-6 w-6" />
                         </div>
                         <div>
                           <div className="flex items-center gap-3 flex-wrap">
-                            <h2 className="text-xl font-bold text-slate-900">
+                            <h2 className="text-xl font-bold text-[#111111]">
                               Local Feature Attribution Ready
                             </h2>
-                            <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-2.5 py-0.5 text-xs font-semibold">
+                            <span className="inline-flex items-center rounded-full bg-neutral-100 text-[#111111] border border-neutral-200 px-2.5 py-0.5 text-xs font-semibold">
                               Target Class: {shap.predicted_class}
                             </span>
-                            <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-800 px-2.5 py-0.5 text-xs font-semibold">
+                            <span className="inline-flex items-center rounded-full bg-neutral-100 text-neutral-700 border border-neutral-200 px-2.5 py-0.5 text-xs font-semibold">
                               Statistical Risk Model
                             </span>
                           </div>
@@ -1202,9 +1306,9 @@ export default function RiskIntelligence() {
                   </div>
                 </>
               ) : (
-                <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 via-white to-slate-50 p-6 shadow-sm">
+                <div className="rounded-2xl border border-[#E5E5E0] bg-[#F7F7F5] p-6 shadow-sm">
                   <div className="flex items-start gap-4">
-                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-white">
                       <Info className="h-6 w-6" />
                     </div>
                     <div>
@@ -1249,7 +1353,7 @@ export default function RiskIntelligence() {
                         placeholder="Search by ATT&CK ID (e.g. T1040), technique name, CWE..."
                         value={threatSearch}
                         onChange={(e) => setThreatSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                       />
                     </div>
 
@@ -1258,7 +1362,7 @@ export default function RiskIntelligence() {
                       <select
                         value={threatCategory}
                         onChange={(e) => setThreatCategory(e.target.value)}
-                        className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                       >
                         <option value="ALL">All Categories ({threats.length})</option>
                         {threatCategories.map((cat) => (
@@ -1284,7 +1388,7 @@ export default function RiskIntelligence() {
                         return (
                           <div
                             key={threat.threat_mapping_id}
-                            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-blue-200 transition-all"
+                            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-[#111111] transition-all"
                           >
                             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                               <div className="space-y-2 flex-1">
@@ -1297,7 +1401,7 @@ export default function RiskIntelligence() {
                                   <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                                     {safeVal(threat.category, 'GENERAL').replace(/_/g, ' ')}
                                   </span>
-                                  <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                  <span className="text-xs font-semibold text-[#111111] bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded">
                                     {threat.status}
                                   </span>
                                   {threat.cwe_id && (
@@ -1328,7 +1432,7 @@ export default function RiskIntelligence() {
                                     </span>
                                   )}
                                   <span>
-                                    Upstream Finding: <strong className="text-blue-700 font-mono">{threat.upstream_finding_id}</strong>
+                                    Upstream Finding: <strong className="text-[#111111] font-mono">{threat.upstream_finding_id}</strong>
                                   </span>
                                 </div>
                               </div>
@@ -1339,7 +1443,7 @@ export default function RiskIntelligence() {
                                     href={mitre.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#555555] hover:text-[#111111] bg-[#F7F7F5] hover:bg-white px-3 py-1.5 rounded-lg border border-[#E5E5E0] transition-colors"
                                   >
                                     MITRE Reference
                                     <ExternalLink className="h-3.5 w-3.5" />
@@ -1348,7 +1452,7 @@ export default function RiskIntelligence() {
 
                                 <button
                                   onClick={() => setExpandedThreat(isExpanded ? null : threat.threat_mapping_id)}
-                                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+                                  className="text-xs font-semibold text-[#111111] hover:text-black flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#F7F7F5] border border-[#E5E5E0] hover:bg-white transition-colors"
                                 >
                                   {isExpanded ? 'Hide Traceability' : 'Trace Evidence'}
                                   <ArrowRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -1434,7 +1538,7 @@ export default function RiskIntelligence() {
                         placeholder="Search by CWE (e.g. CWE-295), CVE, title, finding ID..."
                         value={vulnSearch}
                         onChange={(e) => setVulnSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                       />
                     </div>
                   </div>
@@ -1481,7 +1585,7 @@ export default function RiskIntelligence() {
                                 </p>
 
                                 <div className="text-xs text-slate-500 pt-1">
-                                  Source Finding: <strong className="text-blue-700 font-mono">{v.source_finding_id}</strong>
+                                  Source Finding: <strong className="text-[#111111] font-mono">{v.source_finding_id}</strong>
                                 </div>
                               </div>
 

@@ -164,7 +164,7 @@ export default function ExportEvidence() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#111111] text-white">
                 <FileJson className="h-5 w-5" />
               </div>
               <div>
@@ -182,7 +182,7 @@ export default function ExportEvidence() {
             <span className="text-xs text-slate-400">100% Client-side export</span>
             <button
               onClick={handleExportJson}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-sm transition-all"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#111111] text-white text-xs font-semibold hover:bg-[#222222] shadow-sm transition-all"
             >
               <Download className="h-4 w-4" /> Download JSON
             </button>

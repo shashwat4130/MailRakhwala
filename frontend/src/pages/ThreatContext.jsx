@@ -13,6 +13,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { safeVal } from '../utils/formatters';
 
 export default function ThreatContext() {
@@ -62,12 +63,10 @@ export default function ThreatContext() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <Dna className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Correlating threat context...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="Threat Context Mapping"
+          message="Correlating observed weaknesses with MITRE ATT&CK adversarial techniques..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">
@@ -100,7 +99,7 @@ export default function ThreatContext() {
                 placeholder="Search by ATT&CK ID (e.g. T1040), technique name, CWE..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
               />
             </div>
 
@@ -109,7 +108,7 @@ export default function ThreatContext() {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
               >
                 <option value="ALL">All Categories ({threats.length})</option>
                 {availableCategories.map((cat) => (
@@ -135,7 +134,7 @@ export default function ThreatContext() {
                 return (
                   <div
                     key={threat.threat_mapping_id}
-                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-blue-200 transition-all"
+                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-[#111111] transition-all"
                   >
                     <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                       <div className="space-y-2 flex-1">
@@ -148,7 +147,7 @@ export default function ThreatContext() {
                           <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                             {safeVal(threat.category, 'GENERAL').replace(/_/g, ' ')}
                           </span>
-                          <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                          <span className="text-xs font-semibold text-[#111111] bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded">
                             {threat.status}
                           </span>
                           {threat.cwe_id && (
@@ -180,7 +179,7 @@ export default function ThreatContext() {
                             </span>
                           )}
                           <span>
-                            Upstream Finding: <strong className="text-blue-700 font-mono">{threat.upstream_finding_id}</strong>
+                            Upstream Finding: <strong className="text-[#111111] font-mono">{threat.upstream_finding_id}</strong>
                           </span>
                         </div>
                       </div>
@@ -192,7 +191,7 @@ export default function ThreatContext() {
                             href={mitre.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#555555] hover:text-[#111111] bg-[#F7F7F5] hover:bg-white px-3 py-1.5 rounded-lg border border-[#E5E5E0] transition-colors"
                           >
                             MITRE Reference
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -201,7 +200,7 @@ export default function ThreatContext() {
 
                         <button
                           onClick={() => setExpandedThreat(isExpanded ? null : threat.threat_mapping_id)}
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+                          className="text-xs font-semibold text-[#111111] hover:text-black flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#F7F7F5] border border-[#E5E5E0] hover:bg-white transition-colors"
                         >
                           {isExpanded ? 'Hide Traceability' : 'Trace Evidence'}
                           <ArrowRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />

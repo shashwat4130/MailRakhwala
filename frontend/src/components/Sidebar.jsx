@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
@@ -11,13 +11,18 @@ import {
   Compass,
   FileText,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   X,
 } from 'lucide-react';
+import { useAnalysisContext } from '../context/AnalysisContext';
+import MailRakhwalaLogo from './MailRakhwalaLogo';
 
-const primaryNavigation = [
+export const primaryNavigation = [
+  { label: 'Home', href: '/', icon: Home, isGlobal: true },
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Stream Analysis', href: '/analysis', icon: Network },
-  { label: 'TLS Analysis', href: '/tls-analysis', icon: LockKeyhole },
+  { label: 'Stream Analysis', href: '/streams', icon: Network },
+  { label: 'TLS Analysis', href: '/tls', icon: LockKeyhole },
   { label: 'Evidence Explorer', href: '/evidence', icon: Search },
   { label: 'Findings & CVEs', href: '/findings', icon: AlertTriangle },
   { label: 'Security Posture', href: '/posture', icon: ShieldCheck },
@@ -25,10 +30,12 @@ const primaryNavigation = [
   { label: 'Forensic Reports', href: '/reports', icon: FileText },
 ];
 
-// Helper to determine active link state across route aliases
-const isItemActive = (href, pathname) => {
-  if (href === '/analysis' && (pathname === '/analysis' || pathname === '/stream-analysis')) return true;
+export const isItemActive = (href, pathname) => {
+  if (href === '/' && pathname === '/') return true;
+  if ((href === '/streams' || href === '/analysis') && (pathname === '/streams' || pathname === '/analysis' || pathname === '/stream-analysis')) return true;
+  if ((href === '/tls' || href === '/tls-analysis') && (pathname === '/tls' || pathname === '/tls-analysis')) return true;
   if (href === '/evidence' && (pathname === '/evidence' || pathname === '/evidence-explorer')) return true;
+  if (href === '/findings' && pathname === '/findings') return true;
   if (href === '/posture' && (pathname === '/posture' || pathname === '/security-posture' || pathname === '/rules' || pathname === '/security-rules')) return true;
   if (href === '/risk-intelligence' && (
     pathname === '/risk-intelligence' ||
@@ -40,127 +47,219 @@ const isItemActive = (href, pathname) => {
   )) return true;
   if (href === '/dashboard' && (pathname === '/dashboard' || pathname === '/analytics' || pathname === '/security-analytics' || pathname === '/settings' || pathname === '/analysis-settings')) return true;
   if (href === '/reports' && (pathname === '/reports' || pathname === '/forensic-reports' || pathname === '/export-evidence')) return true;
-  if (href === '/tls-analysis' && pathname === '/tls-analysis') return true;
   return false;
 };
 
-function NavContent({ onClose }) {
+export function NavContent({ onClose, collapsed = false, onToggleCollapse }) {
   const location = useLocation();
+  const { analysisId } = useAnalysisContext();
+  const hasActiveCapture = Boolean(
+    analysisId ||
+    (typeof window !== 'undefined' && (localStorage.getItem('active_analysis_id') || localStorage.getItem('analysis_id')))
+  );
 
   return (
-    <div className="flex h-full w-full flex-col">
-      {/* Header / Logo */}
-      <div className="flex h-[84px] shrink-0 items-center justify-between px-5">
-        <NavLink to="/" onClick={onClose} className="relative h-[66px] w-[175px] overflow-visible block" title="MailRakhwala Home">
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            src="/mailrakhwala-logo.mp4"
-            className="absolute left-0 top-1/2 h-[92px] w-[180px] -translate-y-1/2 scale-[1.1] object-contain object-left"
-            aria-label="MailRakhwala"
-          />
-        </NavLink>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-slate-700 hover:bg-blue-100 hover:text-blue-700 transition lg:hidden"
-            aria-label="Close sidebar"
-          >
-            <X className="h-5 w-5" />
-          </button>
+    <div className="flex h-full w-full flex-col bg-[#111111] text-white select-none">
+      <div className={`flex h-[72px] shrink-0 items-center border-b border-[#202020] px-3.5 transition-all ${
+        collapsed ? 'justify-center' : 'justify-between'
+      }`}>
+        {collapsed ? (
+          onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+              className="group hidden lg:flex h-10 w-10 items-center justify-center rounded-xl bg-[#181818] border border-[#282828] text-neutral-300 hover:text-white hover:bg-[#222222] hover:border-[#383838] transition shadow-sm"
+            >
+              <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          )
+        ) : (
+          <>
+            <NavLink
+              to="/"
+              onClick={onClose}
+              className="focus:outline-none"
+              title="MailRakhwala Forensic Console"
+            >
+              <MailRakhwalaLogo variant="dark" collapsed={false} />
+            </NavLink>
+
+            <div className="flex items-center gap-1.5">
+              {onToggleCollapse && (
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
+                  className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg bg-[#181818] border border-[#282828] text-neutral-400 hover:text-white hover:bg-[#222222] hover:border-[#333333] transition"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              )}
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#202020] text-neutral-400 hover:text-white transition lg:hidden"
+                  aria-label="Close sidebar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      <div className="mx-5 h-px shrink-0 bg-blue-100" />
+      <nav className="flex-1 overflow-y-auto px-2.5 py-4 space-y-1">
+        {!collapsed && (
+          <div className="px-3 pb-2 pt-1 text-[9px] font-extrabold uppercase tracking-[0.18em] text-neutral-400 whitespace-nowrap">
+            ANALYSIS
+          </div>
+        )}
 
-      {/* Primary Navigation - 8 Core Routes */}
-      <nav className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1 scrollbar-thin scrollbar-thumb-blue-100">
-        <div className="px-3 pb-1 pt-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
-          Console Navigation
-        </div>
+        {primaryNavigation.map((item) => {
+          const { label, href, icon: Icon } = item;
+          const active = href ? isItemActive(href, location.pathname) : false;
 
-        {primaryNavigation.map(({ label, href, icon: Icon }) => {
-          const active = isItemActive(href, location.pathname);
           return (
             <NavLink
               key={href}
               to={href}
               onClick={onClose}
-              className={`group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+              title={collapsed ? label : undefined}
+              className={`group relative flex items-center rounded-lg transition-all duration-150 ${
+                collapsed
+                  ? 'h-10 w-10 justify-center mx-auto'
+                  : 'w-full gap-3 px-3 py-2.5 text-xs font-semibold'
+              } ${
                 active
-                  ? 'bg-[#0B5ED7]/10 text-[#0B5ED7] shadow-sm font-bold'
-                  : 'text-[#192837]/70 hover:bg-[#0B5ED7]/5 hover:text-[#0B5ED7]'
+                  ? 'bg-[#222222] text-white shadow-sm'
+                  : 'text-neutral-400 hover:bg-[#181818] hover:text-white'
               }`}
             >
-              <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                  active
-                    ? 'bg-[#0B5ED7]/15 text-[#0B5ED7]'
-                    : 'bg-slate-50 text-slate-500 group-hover:bg-blue-50 group-hover:text-[#0B5ED7]'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-              </span>
-              <span className="truncate">{label}</span>
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-white" />
+              )}
+
+              <Icon
+                className={`shrink-0 transition-colors ${
+                  active ? 'text-white' : 'text-neutral-400 group-hover:text-white'
+                } ${collapsed ? 'h-4.5 w-4.5' : 'h-4 w-4'}`}
+                strokeWidth={active ? 2.2 : 1.8}
+              />
+
+              {!collapsed && (
+                <div className="flex flex-1 items-center min-w-0">
+                  <span className="truncate whitespace-nowrap">{label}</span>
+                </div>
+              )}
             </NavLink>
           );
         })}
 
-        <div className="pt-4">
-          <div className="px-3 pb-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
-            Reference
-          </div>
+        <div className="pt-4 mt-2 border-t border-[#202020]">
+          {!collapsed && (
+            <div className="px-3 pb-2 text-[9px] font-extrabold uppercase tracking-[0.18em] text-neutral-400 whitespace-nowrap">
+              REFERENCE
+            </div>
+          )}
           <NavLink
             to="/documentation"
             onClick={onClose}
+            title={collapsed ? 'Documentation' : undefined}
             className={({ isActive }) =>
-              `group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+              `group relative flex items-center rounded-lg transition-all duration-150 ${
+                collapsed
+                  ? 'h-10 w-10 justify-center mx-auto'
+                  : 'w-full gap-3 px-3 py-2.5 text-xs font-semibold'
+              } ${
                 isActive
-                  ? 'bg-[#0B5ED7]/10 text-[#0B5ED7] shadow-sm font-bold'
-                  : 'text-[#192837]/70 hover:bg-[#0B5ED7]/5 hover:text-[#0B5ED7]'
+                  ? 'bg-[#222222] text-white shadow-sm'
+                  : 'text-neutral-400 hover:bg-[#181818] hover:text-white'
               }`
             }
           >
             {({ isActive }) => (
               <>
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-[#0B5ED7]/15 text-[#0B5ED7]'
-                      : 'bg-slate-50 text-slate-500 group-hover:bg-blue-50 group-hover:text-[#0B5ED7]'
-                  }`}
-                >
-                  <BookOpen className="h-3.5 w-3.5" />
-                </span>
-                <span className="truncate">Documentation</span>
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-white" />
+                )}
+                <BookOpen
+                  className={`shrink-0 transition-colors ${
+                    isActive ? 'text-white' : 'text-neutral-400 group-hover:text-white'
+                  } ${collapsed ? 'h-4.5 w-4.5' : 'h-4 w-4'}`}
+                  strokeWidth={isActive ? 2.2 : 1.8}
+                />
+                {!collapsed && <span className="truncate whitespace-nowrap">Documentation</span>}
               </>
             )}
           </NavLink>
         </div>
       </nav>
 
-      {/* Footer info box */}
-      <div className="shrink-0 px-4 pb-4 pt-2 border-t border-blue-50">
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-3.5 py-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#0B5ED7]">
-            MailRakhwala Console
-          </p>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-[#192837]/50">
-            Passive email cryptographic assessment
-          </p>
-        </div>
+      <div className="shrink-0 border-t border-[#202020] p-3 space-y-2 bg-[#141414]">
+        {!collapsed && (
+          <div className="rounded-lg border border-[#242424] bg-[#181818] p-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
+                Engine Status
+              </span>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${
+                hasActiveCapture ? 'bg-emerald-500' : 'bg-neutral-400'
+              }`} />
+            </div>
+            <p className="mt-1 truncate font-mono text-[10px] text-neutral-400">
+              {hasActiveCapture
+                ? `Active: ${analysisId ? analysisId.slice(0, 10) + '...' : 'Loaded'}`
+                : 'Awaiting PCAP'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export default function Sidebar() {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/') return true;
+      const saved = localStorage.getItem('mailrakhwala_sidebar_collapsed');
+      if (saved !== null) return saved === 'true';
+    }
+    return isHome;
+  });
+
+  useEffect(() => {
+    if (isHome) {
+      setCollapsed(true);
+    }
+  }, [isHome]);
+
+  const handleToggleCollapse = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('mailrakhwala_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   return (
-    <aside className="hidden h-screen w-[260px] shrink-0 border-r border-blue-100 bg-white/95 shadow-[8px_0_30px_rgba(15,76,160,0.06)] backdrop-blur-xl lg:flex">
-      <NavContent />
+    <aside
+      className={`hidden sticky top-0 h-screen min-h-screen shrink-0 border-r border-[#202020] bg-[#111111] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] lg:flex flex-col z-30 ${
+        collapsed ? 'w-[72px]' : 'w-[260px]'
+      }`}
+    >
+      <NavContent
+        collapsed={collapsed}
+        onToggleCollapse={handleToggleCollapse}
+      />
     </aside>
   );
 }
@@ -170,15 +269,13 @@ export function MobileSidebarDrawer({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
-      {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 flex w-[280px] flex-col border-r border-blue-100 bg-white shadow-2xl">
-        <NavContent onClose={onClose} />
+      <div className="fixed inset-y-0 left-0 flex w-[280px] flex-col border-r border-[#202020] bg-[#111111] shadow-2xl">
+        <NavContent onClose={onClose} collapsed={false} />
       </div>
     </div>
   );

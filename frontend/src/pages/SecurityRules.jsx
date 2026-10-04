@@ -13,6 +13,7 @@ import {
 import { useAnalysis } from '../hooks/useAnalysis';
 import PageHeader from '../components/PageHeader';
 import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { LoadingState } from '../components/LoadingScreen';
 import { getStatusBadge, getSeverityBadge } from '../utils/severity';
 import { safeVal } from '../utils/formatters';
 
@@ -68,12 +69,10 @@ export default function SecurityRules() {
       />
 
       {loading && !report ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-500">
-            <Shield className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="text-sm font-medium">Evaluating RFC security rules...</span>
-          </div>
-        </div>
+        <LoadingState
+          title="Security Rule Evaluation"
+          message="Evaluating 19 RFC compliance standards and protocol constraints..."
+        />
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
           <div className="flex items-center gap-3">
@@ -99,7 +98,7 @@ export default function SecurityRules() {
                   placeholder="Search by rule ID (e.g. RULE-TLS-001), title, property..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                 />
               </div>
 
@@ -109,7 +108,7 @@ export default function SecurityRules() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                 >
                   <option value="ALL">All Categories ({findings.length})</option>
                   {availableCategories.map((cat) => (
@@ -130,7 +129,7 @@ export default function SecurityRules() {
                 onClick={() => setSelectedStatus('ALL')}
                 className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors shrink-0 ${
                   selectedStatus === 'ALL'
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-[#111111] text-white'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -175,7 +174,7 @@ export default function SecurityRules() {
                       {/* Left: Info */}
                       <div className="space-y-2 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200/50">
+                          <span className="font-mono text-xs font-bold text-[#111111] bg-[#F7F7F5] px-2.5 py-0.5 rounded-md border border-[#E5E5E0]">
                             {rule.rule_id}
                           </span>
                           <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
@@ -206,7 +205,7 @@ export default function SecurityRules() {
                               Observed Property: <strong className="text-slate-900">{rule.evidence.observed_property}</strong>
                             </span>
                             <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono text-[11px]">
-                              Observed: <strong className="text-blue-900">{safeVal(rule.evidence.observed_value, 'None')}</strong>
+                              Observed: <strong className="text-[#111111]">{safeVal(rule.evidence.observed_value, 'None')}</strong>
                             </span>
                             {rule.evidence.reference_value && (
                               <span className="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded font-mono text-[11px]">
@@ -220,7 +219,7 @@ export default function SecurityRules() {
                       {/* Right: Expand action */}
                       <button
                         onClick={() => setExpandedRule(isExpanded ? null : rule.rule_id)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 shrink-0 self-start"
+                        className="text-xs font-semibold text-[#111111] hover:text-black flex items-center gap-1 shrink-0 self-start"
                       >
                         {isExpanded ? 'Hide Guidance' : 'View Recommendation'}
                         <ArrowRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />

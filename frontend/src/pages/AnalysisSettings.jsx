@@ -72,7 +72,7 @@ export default function AnalysisSettings() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
           <form onSubmit={handleSwitchSession} className="space-y-4">
             <div className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-blue-600" />
+              <Database className="h-5 w-5 text-[#111111]" />
               <h3 className="text-base font-bold text-slate-900">Active Analysis Session</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
@@ -89,7 +89,7 @@ export default function AnalysisSettings() {
                 value={sessionInput}
                 onChange={(e) => setSessionInput(e.target.value)}
                 placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
               />
             </div>
 
@@ -99,7 +99,7 @@ export default function AnalysisSettings() {
               </span>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-sm transition-all"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#111111] text-white text-xs font-semibold hover:bg-[#222222] shadow-sm transition-all"
               >
                 Switch Session
               </button>
@@ -132,7 +132,7 @@ export default function AnalysisSettings() {
                 <select
                   value={defaultSeverityFilter}
                   onChange={(e) => setDefaultSeverityFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                 >
                   <option value="ALL">Show All Findings</option>
                   <option value="HIGH_CRITICAL">High & Critical Only</option>
@@ -147,7 +147,7 @@ export default function AnalysisSettings() {
                 <select
                   value={tableDensity}
                   onChange={(e) => setTableDensity(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#111111]/20 focus:border-[#111111]"
                 >
                   <option value="comfortable">Comfortable (Standard)</option>
                   <option value="compact">Compact (High Information Density)</option>
@@ -175,7 +175,7 @@ export default function AnalysisSettings() {
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-blue-600" />
+            <Shield className="h-5 w-5 text-[#111111]" />
             <div>
               <h3 className="text-base font-bold text-slate-900">
                 Authoritative Engine Specifications (Read-Only)
@@ -228,8 +228,8 @@ export default function AnalysisSettings() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs text-blue-900 flex items-start gap-2.5">
-          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+        <div className="rounded-xl border border-[#E5E5E0] bg-[#F7F7F5] p-4 text-xs text-[#111111] flex items-start gap-2.5">
+          <Info className="h-4 w-4 text-[#111111] shrink-0 mt-0.5" />
           <span>
             Backend configuration is immutably defined by security policy rules. To alter rule thresholds
             or scoring penalties, authoritative backend configuration files must be updated by system administrators.
