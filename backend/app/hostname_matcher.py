@@ -1,5 +1,5 @@
 """
-MailRakhwala Hostname Matching Utility (Step 19)
+MailRakhwala Hostname Matching Utility
 RFC 6125 compliant hostname and wildcard SAN verification.
 Passive, deterministic, and safe against substring or cross-label attacks.
 """

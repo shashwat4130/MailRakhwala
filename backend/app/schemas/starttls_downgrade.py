@@ -1,5 +1,5 @@
 """
-MailRakhwala STARTTLS Downgrade & Plaintext Fallback Analysis Contracts (Step 11)
+MailRakhwala STARTTLS Downgrade & Plaintext Fallback Analysis Contracts
 Adheres strictly to passive PCAP forensic limitations (RFC 3207, RFC 8314).
 """
 
@@ -70,7 +70,7 @@ class DowngradeFinding(BaseModel):
 
 
 class DowngradeAnalysisResult(BaseModel):
-    """Complete Step 11 downgrade assessment output for a single TCP stream."""
+    """Complete downgrade assessment output for a single TCP stream."""
     stream_id: str
     protocol: EmailProtocol
     status: DowngradeAssessmentStatus

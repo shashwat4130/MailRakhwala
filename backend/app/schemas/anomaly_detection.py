@@ -15,40 +15,48 @@ class AnomalyDetectionMetadata(BaseModel):
 
 class AnomalyDetectionResult(BaseModel):
     """
-    Step 26: Result of Isolation Forest statistical anomaly detection.
+    Result of Isolation Forest statistical anomaly detection.
     
     IMPORTANT:
     An anomaly is a statistical outlier relative to the reference distribution.
     Anomalous does NOT indicate an attack, intrusion, or confirmed exploit.
     """
+    available: bool = Field(
+        default=True,
+        description="Whether anomaly detection model was available and evaluated"
+    )
     stream_id: Optional[str] = Field(default=None, description="Identifier of the evaluated session/stream")
-    is_anomalous: bool = Field(
-        ...,
-        description="True if configuration is statistically anomalous relative to reference set, False otherwise"
+    is_anomalous: Optional[bool] = Field(
+        default=None,
+        description="True if configuration is statistically anomalous relative to reference set, False otherwise, or None if unavailable"
     )
-    prediction: int = Field(
-        ...,
-        description="Raw Isolation Forest prediction: +1 for normal, -1 for anomalous"
+    prediction: Optional[int] = Field(
+        default=None,
+        description="Raw Isolation Forest prediction: +1 for normal, -1 for anomalous, None if unavailable"
     )
-    anomaly_score: float = Field(
-        ...,
-        description="Continuous outlier score from decision_function(). Lower values indicate higher abnormality. Not a probability."
+    anomaly_score: Optional[float] = Field(
+        default=None,
+        description="Continuous outlier score from decision_function(). Lower values indicate higher abnormality. Not a probability. None if unavailable."
     )
     status_text: str = Field(
-        ...,
+        default="Anomaly detection evaluated.",
         description="Neutral, factual explanation of whether statistical anomaly was detected"
     )
     feature_count: int = Field(
         default=19,
         description="Total feature dimensions verified for this prediction"
     )
-    model_metadata: AnomalyDetectionMetadata = Field(
+    model_metadata: Optional[AnomalyDetectionMetadata] = Field(
         default_factory=AnomalyDetectionMetadata,
         description="Configuration of the fitted detector"
     )
     feature_vector: Optional[List[float]] = Field(
         default=None,
         description="Exact 19-dimensional feature vector evaluated for complete auditability"
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Machine-readable reason if anomaly detection is unavailable"
     )
 
 

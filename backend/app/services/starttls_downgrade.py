@@ -1,6 +1,6 @@
 """
-MailRakhwala STARTTLS Downgrade & Plaintext Fallback Analysis Service (Step 11)
-Deterministic analysis engine evaluating Step 8, 9, and 10 models.
+MailRakhwala STARTTLS Downgrade & Plaintext Fallback Analysis Service
+Deterministic analysis engine evaluating reconstructed protocol stream models.
 """
 
 import re

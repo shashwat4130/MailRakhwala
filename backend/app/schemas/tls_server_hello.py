@@ -1,5 +1,5 @@
 """
-MailRakhwala TLS ServerHello Schemas (Step 14)
+MailRakhwala TLS ServerHello Schemas
 Structured contracts for TLS 1.0 - 1.3 ServerHello handshakes and negotiated parameters.
 """
 

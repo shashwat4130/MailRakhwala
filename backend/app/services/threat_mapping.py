@@ -1,7 +1,7 @@
 """
-Service implementation for Step 23 - Threat Mapping & Evidence Correlation.
+Service implementation for Threat Mapping & Evidence Correlation.
 
-Consumes structured findings from Step 22 and adds a deterministic threat-context layer.
+Consumes structured weakness findings and adds a deterministic threat-context layer.
 """
 
 from __future__ import annotations
@@ -88,7 +88,13 @@ class ThreatMappingCatalog:
         return len(self.rules)
 
     def get_rules_for_upstream(self, upstream_rule_id: str) -> List[Dict[str, Any]]:
-        return self.upstream_rule_index.get(upstream_rule_id, [])
+        direct = self.upstream_rule_index.get(upstream_rule_id, [])
+        if not direct:
+            if upstream_rule_id == "RULE-STARTTLS-002":
+                return self.upstream_rule_index.get("RULE-STARTTLS-001", [])
+            elif upstream_rule_id == "RULE-STARTTLS-001":
+                return self.upstream_rule_index.get("RULE-STARTTLS-002", [])
+        return direct
 
 
 class ThreatMappingService:
@@ -144,7 +150,7 @@ class ThreatMappingService:
         raw_der = _get_field("raw_der_sha256")
         ref_val = _get_field("reference_value")
 
-        # Resolves without crashing regardless of Step 22 finding attribute naming
+        # Resolves without crashing regardless of upstream finding attribute naming
         resolved_finding_id = (
             getattr(weakness, "finding_id", None)
             or getattr(weakness, "compliance_finding_id", None)

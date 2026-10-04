@@ -1,7 +1,7 @@
 """
-MailRakhwala Deterministic Cryptographic Compliance Engine Service (Step 21)
-Evaluates observed cryptographic parameters strictly against authoritative Step 4 rules.
-Pipeline: Observed Evidence -> Authoritative Step 4 Rule -> Deterministic Evaluation -> Finding -> Severity -> Recommendation
+MailRakhwala Deterministic Cryptographic Compliance Engine Service
+Evaluates observed cryptographic parameters strictly against authoritative security rules.
+Pipeline: Observed Evidence -> Authoritative Rule -> Deterministic Evaluation -> Finding -> Severity -> Recommendation
 """
 
 from datetime import datetime, timezone
@@ -27,7 +27,7 @@ from app.services.rule_loader import rule_catalog
 
 
 class ComplianceEngine:
-    """Authoritative compliance engine evaluating strictly against Step 4 rules."""
+    """Authoritative compliance engine evaluating strictly against canonical security rules."""
 
     VERSION = "21.0.0"
 
@@ -906,7 +906,7 @@ class ComplianceEngine:
         cert_idx: Optional[int] = None,
         raw_sha: Optional[str] = None,
     ) -> ComplianceFinding:
-        # Load directly from authoritative Step 4 rule definition
+        # Load directly from authoritative rule definition
         rule_def = rule_catalog.require_rule(rule_id)
 
         # Deterministic SHA-256 identifier

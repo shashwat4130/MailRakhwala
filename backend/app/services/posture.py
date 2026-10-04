@@ -1,7 +1,7 @@
 """
-Service implementation for Step 24 - Cryptographic Posture & Risk Engine.
+Service implementation for Cryptographic Posture & Risk Engine.
 
-Translates findings from Steps 21-23 into a transparent 0-100 posture score.
+Translates compliance, vulnerability, and threat findings into a transparent 0-100 posture score.
 Enforces fail-safe evidence verification: penalties require verified observable evidence.
 Eliminates double-counting using evidence-aware deterministic keys.
 """
@@ -58,6 +58,12 @@ class PostureRuleCatalog:
         if expected_count is not None and len(rules_list) != expected_count:
             raise ValueError(
                 f"Catalog total_rules count mismatch: declared {expected_count}, found {len(rules_list)}"
+            )
+
+        total_penalty_budget = sum(int(rule.get("penalty", 0)) for rule in rules_list)
+        if total_penalty_budget != 100:
+            raise ValueError(
+                f"Calibrated 19-rule penalty budget must equal exactly 100, got {total_penalty_budget}"
             )
 
         seen_rule_ids: Set[str] = set()
@@ -162,6 +168,7 @@ class PostureEngineService:
         weaknesses: Optional[List[WeaknessMapping]] = None,
         threats: Optional[List[ThreatContextMapping]] = None,
         scoring_context: Optional[Dict[str, Any]] = None,
+        is_applicable: bool = True,
     ) -> CryptographicPostureReport:
         """
         Calculates a transparent 0-100 posture score.
@@ -170,13 +177,32 @@ class PostureEngineService:
           2. Evidence-aware Deduplication: (upstream_rule_id, cert_index, prop, normalized_val).
           3. UNKNOWN / NOT_APPLICABLE / COMPLIANT have 0 deduction.
           4. Clamped to [0, 100].
+          5. NOT_APPLICABLE sessions produce explicit non-evaluated status without fake 100/100 or 0/100.
         """
+        if not is_applicable:
+            return CryptographicPostureReport(
+                session_id=session_id,
+                stream_id=stream_id,
+                posture_score=None,
+                severity=None,
+                base_score=100,
+                total_penalty=0,
+                deductions=[],
+                evaluated_findings_count=0,
+                compliant_findings_count=0,
+                non_compliant_findings_count=0,
+                unknown_findings_count=0,
+                deterministic=True,
+                applicability="NOT_APPLICABLE",
+                assessment_status="NOT_APPLICABLE",
+            )
+
         findings = findings or []
         weaknesses = weaknesses or []
         threats = threats or []
         scoring_context = scoring_context or {}
 
-        # Index Step 22 and Step 23 metadata by evidence-aware defect key
+        # Index weakness and threat metadata by evidence-aware defect key
         weakness_index: Dict[Tuple[str, Optional[int], str, str], str] = {}
         for w in weaknesses:
             u_rule = getattr(w, "source_rule_id", None) or getattr(w, "rule_id", "")
@@ -196,13 +222,14 @@ class PostureEngineService:
                 threat_index[k] = getattr(t, "threat_mapping_id", "")
 
         applied_defects: Set[Tuple[str, Optional[int], str, str]] = set()
+        applied_posture_rules: Set[str] = set()
         deductions: List[PostureDeduction] = []
 
         compliant_count = 0
         non_compliant_count = 0
         unknown_count = 0
 
-        # 1. Process Step 21 Findings
+        # Process compliance findings
         for f in findings:
             status = getattr(f, "status", None)
             st_val = getattr(status, "value", status)
@@ -221,41 +248,21 @@ class PostureEngineService:
                 def_key = (rule_id, c_idx, prop, self._normalize_value(val))
 
                 if def_key not in applied_defects:
+                    applied_defects.add(def_key)
                     rule = self.catalog.get_rule_for_upstream(rule_id)
-                    if rule:
-                        applied_defects.add(def_key)
+                    if rule and rule["rule_id"] not in applied_posture_rules:
+                        applied_posture_rules.add(rule["rule_id"])
                         finding_id = (
                             getattr(f, "finding_id", None)
                             or getattr(f, "compliance_finding_id", None)
                             or f"FINDING-{rule_id}-{stream_id}"
                         )
-                        base_penalty = int(rule["penalty"])
-                        penalty = base_penalty
-                        description = rule["description"]
-
-                        # Contextual scoring is evidence-driven and additive.
-                        # It does not create a second compliance finding or infer
-                        # a vulnerability that is absent from the capture.
-                        if (
-                            rule_id in {"RULE-STARTTLS-002", "RULE-PLAINTEXT-001"}
-                            and bool(scoring_context.get("plaintext_auth_observed", False))
-                        ):
-                            auth_adjustment = int(
-                                rule.get("plaintext_auth_additional_penalty", 20)
-                            )
-                            if auth_adjustment > 0:
-                                penalty += auth_adjustment
-                                description = (
-                                    f"{description} Additional evidence-based deduction: "
-                                    f"SMTP authentication was observed while the transport remained plaintext "
-                                    f"(+{auth_adjustment} points)."
-                                )
-
                         deductions.append(
                             PostureDeduction(
                                 rule_id=rule["rule_id"],
                                 title=rule["title"],
-                                penalty=penalty,
+                                penalty=int(rule["penalty"]),
+                                severity=rule.get("severity"),
                                 upstream_rule_id=rule_id,
                                 finding_id=finding_id,
                                 weakness_id=weakness_index.get(def_key),
@@ -263,8 +270,8 @@ class PostureEngineService:
                                 observed_property=prop,
                                 observed_value=val,
                                 certificate_index=c_idx,
-                                stream_id=stream_id,
-                                description=description,
+                                stream_id=getattr(ev, "stream_id", None) or stream_id,
+                                description=rule["description"],
                             )
                         )
             elif "COMPLIANT" in st_str or st_str == "PASS":
@@ -272,7 +279,7 @@ class PostureEngineService:
             else:
                 unknown_count += 1
 
-        # 2. Step 22 Weakness fallback (used when Step 21 findings are omitted)
+        # Weakness fallback (used when compliance findings are omitted)
         if not findings and weaknesses:
             for w in weaknesses:
                 m_type = getattr(w, "mapping_type", None)
@@ -294,38 +301,22 @@ class PostureEngineService:
                 def_key = (rule_id, c_idx, prop, self._normalize_value(val))
 
                 if def_key not in applied_defects:
+                    applied_defects.add(def_key)
                     rule = self.catalog.get_rule_for_upstream(rule_id)
-                    if rule:
+                    if rule and rule["rule_id"] not in applied_posture_rules:
                         non_compliant_count += 1
-                        applied_defects.add(def_key)
+                        applied_posture_rules.add(rule["rule_id"])
                         finding_id = (
                             getattr(w, "compliance_finding_id", None)
                             or getattr(w, "finding_id", None)
                             or f"FINDING-{rule_id}-{stream_id}"
                         )
-                        base_penalty = int(rule["penalty"])
-                        penalty = base_penalty
-                        description = rule["description"]
-                        if (
-                            rule_id in {"RULE-STARTTLS-002", "RULE-PLAINTEXT-001"}
-                            and bool(scoring_context.get("plaintext_auth_observed", False))
-                        ):
-                            auth_adjustment = int(
-                                rule.get("plaintext_auth_additional_penalty", 20)
-                            )
-                            if auth_adjustment > 0:
-                                penalty += auth_adjustment
-                                description = (
-                                    f"{description} Additional evidence-based deduction: "
-                                    f"SMTP authentication was observed while the transport remained plaintext "
-                                    f"(+{auth_adjustment} points)."
-                                )
-
                         deductions.append(
                             PostureDeduction(
                                 rule_id=rule["rule_id"],
                                 title=rule["title"],
-                                penalty=penalty,
+                                penalty=int(rule["penalty"]),
+                                severity=rule.get("severity"),
                                 upstream_rule_id=rule_id,
                                 finding_id=finding_id,
                                 weakness_id=getattr(w, "mapping_id", None),
@@ -333,8 +324,8 @@ class PostureEngineService:
                                 observed_property=prop,
                                 observed_value=val,
                                 certificate_index=c_idx,
-                                stream_id=stream_id,
-                                description=description,
+                                stream_id=getattr(ev, "stream_id", None) or getattr(w, "stream_id", None) or stream_id,
+                                description=rule["description"],
                             )
                         )
 
@@ -349,7 +340,28 @@ class PostureEngineService:
 
         total_penalty = sum(d.penalty for d in deductions)
         final_score = max(0, min(100, 100 - total_penalty))
-        severity = self.calculate_severity(final_score)
+        score_severity = self.calculate_severity(final_score)
+
+        # Canonical severity resolver:
+        # max(score-derived severity, highest verified finding severity)
+        # using hierarchy: LOW < MEDIUM < HIGH < CRITICAL
+        sev_rank = {
+            PostureSeverity.LOW: 0,
+            PostureSeverity.MEDIUM: 1,
+            PostureSeverity.HIGH: 2,
+            PostureSeverity.CRITICAL: 3,
+        }
+
+        canonical_severity = score_severity
+        for d in deductions:
+            if d.severity:
+                d_str = str(getattr(d.severity, "value", d.severity)).upper()
+                if d_str in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+                    d_sev = PostureSeverity(d_str)
+                    if sev_rank[d_sev] > sev_rank[canonical_severity]:
+                        canonical_severity = d_sev
+
+        severity = canonical_severity
 
         return CryptographicPostureReport(
             session_id=session_id,
@@ -364,5 +376,7 @@ class PostureEngineService:
             non_compliant_findings_count=non_compliant_count,
             unknown_findings_count=unknown_count,
             deterministic=True,
+            applicability="APPLICABLE",
+            assessment_status="EVALUATED",
         )
 

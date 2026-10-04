@@ -1,5 +1,5 @@
 """
-MailRakhwala Offline Revocation & Trust Evidence Service (Step 20)
+MailRakhwala Offline Revocation & Trust Evidence Service
 Performs deterministic offline chain path verification against a local CA bundle
 and parses captured TLS OCSP stapling (CertificateStatus) payloads.
 """

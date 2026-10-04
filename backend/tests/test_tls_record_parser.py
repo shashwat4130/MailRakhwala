@@ -1,5 +1,5 @@
 """
-Unit tests for Step 12: TLS Record Layer Parser.
+Unit tests for TLS Record Layer Parser.
 Verifies RFC 5246 / RFC 8446 5-byte header extraction, content types,
 legacy record versions, multi-record framing, TCP fragment traversal,
 bounded payload limits, and precise TCP sequence gap disruption handling.
@@ -423,7 +423,7 @@ def test_malformed_input_must_not_crash():
 
 
 def test_regression_steps_1_to_11_unaffected():
-    """30. Step 12 parsing preserves Step 8 ReconstructedStream lifecycle and contents."""
+    """Parsing preserves ReconstructedStream lifecycle and contents."""
     stream = make_stream(
         client_payload=make_handshake_record(b"REGRESSION_CHECK"),
         server_payload=make_handshake_record(b"SERVER_RESP"),

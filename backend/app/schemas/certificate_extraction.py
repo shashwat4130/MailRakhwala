@@ -1,5 +1,5 @@
 """
-MailRakhwala Certificate Extraction Schemas (Step 16)
+MailRakhwala Certificate Extraction Schemas
 Structured data contracts for raw X.509 / DER certificate objects extracted from TLS handshakes.
 """
 
@@ -39,7 +39,7 @@ class CertificateChainExtractionResult(BaseModel):
     malformed_reason: Optional[str] = None
     limitations: List[str] = Field(
         default_factory=lambda: [
-            "Step 16 extracts raw DER certificate bytes only without verifying cryptographic signatures.",
+            "Extracts raw DER certificate bytes only without verifying cryptographic signatures.",
             "Certificate validity, key strength, SAN, and trust chain are audited in subsequent pipeline steps."
         ]
     )

@@ -1,5 +1,5 @@
 """
-MailRakhwala TCP Stream Reconstruction Engine (Step 08)
+MailRakhwala TCP Stream Reconstruction Engine
 Scalable, bounded bidirectional TCP stream reassembly from streaming packet metadata.
 Features 4-tuple primary identification, connection reuse isolation, out-of-order sequencing,
 wire frame numbering, and gap-aware fragment tracking.

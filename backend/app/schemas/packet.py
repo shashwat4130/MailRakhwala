@@ -1,5 +1,5 @@
 """
-MailRakhwala Packet Dissection Schemas (Step 07 & Step 08)
+MailRakhwala Packet Dissection Schemas
 
 Domain models for raw packet metadata and TCP sequence attributes
 extracted from captures.
@@ -63,9 +63,7 @@ class DissectedPacket(BaseModel):
         description="Highest protocol layer detected by dissection",
     )
 
-    # ==============================================================
-    # Step 08 — TCP sequence / reassembly attributes
-    # ==============================================================
+    # TCP sequence / reassembly attributes
 
     tcp_seq: Optional[int] = Field(
         None,

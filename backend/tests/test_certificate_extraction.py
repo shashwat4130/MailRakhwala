@@ -1,5 +1,5 @@
 """
-Unit tests for Step 16: Certificate Extraction.
+Unit tests for Certificate Extraction.
 Verifies extraction of raw DER certificates and ordered certificate chains,
 handling of TLS 1.2 and TLS 1.3 framing, multi-record fragmentation,
 TCP sequence gap disruptions, and malformed length boundaries.

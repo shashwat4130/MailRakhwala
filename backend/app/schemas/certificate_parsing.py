@@ -1,5 +1,5 @@
 """
-MailRakhwala X.509 Certificate Parsing Schemas (Step 17)
+MailRakhwala X.509 Certificate Parsing Schemas
 Structured data contracts for parsed X.509 certificates derived from raw DER objects.
 """
 
@@ -63,9 +63,9 @@ class ParsedExtension(BaseModel):
 class ParsedCertificate(BaseModel):
     """
     Structured X.509 certificate parsed strictly from raw DER bytes.
-    Preserves chain ordering, stream context, and forensic traceability from Step 16.
+    Preserves chain ordering, stream context, and forensic traceability.
     """
-    # Step 16 Forensic Traceability
+    # Forensic Traceability
     certificate_index: int = Field(..., ge=0, description="0-based chain index (0 is end-entity/leaf)")
     stream_id: Optional[str] = Field(default=None, description="Correlated TCP stream ID")
     stream_offset: int = Field(default=0, ge=0, description="Byte offset in handshake payload")
@@ -73,7 +73,7 @@ class ParsedCertificate(BaseModel):
     timestamp: Optional[float] = Field(default=None, description="Captured frame timestamp")
     raw_der_sha256: Optional[str] = Field(default=None, description="SHA-256 fingerprint of raw DER")
 
-    # Step 17 Parse Status
+    # Parse Status
     parse_status: CertificateParseStatus = CertificateParseStatus.PARSED
     parse_error: Optional[str] = None
 
@@ -124,6 +124,6 @@ class ParsedCertificateChain(BaseModel):
     limitations: List[str] = Field(
         default_factory=lambda: [
             "Chain ordering reflects the presentation order received in the TLS handshake.",
-            "Cryptographic signature verification across parent/child nodes is reserved for Step 18+."
+            "Cryptographic signature verification across parent/child nodes is performed in subsequent trust validation stages."
         ]
     )

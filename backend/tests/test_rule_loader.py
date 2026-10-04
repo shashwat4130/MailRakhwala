@@ -1,5 +1,5 @@
 """
-Focused tests verifying Substep 21A Authoritative Step 4 Rule Loader.
+Focused tests verifying Authoritative Security Rule Loader.
 Verifies fail-closed validation, missing file handling, malformed JSON detection,
 metadata completeness, duplicate prevention, and JSON mutation responsiveness without fallback mocks.
 """

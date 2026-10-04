@@ -1,5 +1,5 @@
 """
-MailRakhwala TLS ClientHello Schemas (Step 13)
+MailRakhwala TLS ClientHello Schemas
 Structured contracts for TLS 1.0 - 1.3 ClientHello handshakes and extensions.
 """
 

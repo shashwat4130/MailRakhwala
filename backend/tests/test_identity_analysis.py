@@ -1,5 +1,5 @@
 """
-Tests verifying Step 19 Identity & Trust Analysis.
+Tests verifying Identity & Trust Analysis.
 Deterministic offline tests verifying hostname matching, wildcard handling,
 and identity correlation across TLS SNI, Certificate SAN, mail host, and DNS/trust context.
 """
@@ -88,7 +88,7 @@ def test_malformed_invalid_hostname_inputs():
     assert match_hostname("...", "...") is False
 
 
-# --- Fix 1: No Subject CN Fallback for SAN ---
+# --- SAN Evaluation: No Subject CN Fallback ---
 
 def test_san_absent_cn_matching_sni_returns_unavailable():
     # Certificate has CN='mail.example.com', but SAN is absent
@@ -177,7 +177,7 @@ def test_sni_vs_mail_host_mismatch_context():
     assert rel.status == IdentityStatus.NEEDS_CONTEXT
 
 
-# --- Fix 3: DNS/MX Conservative Semantics ---
+# --- DNS/MX Conservative Semantics ---
 
 def test_dns_mx_evidence_direct_match():
     cert = _build_dummy_cert()
@@ -217,7 +217,7 @@ def test_dns_mx_evidence_unavailable():
     assert rel.status == IdentityStatus.UNAVAILABLE
 
 
-# --- Fix 2: Trust Path Never Claims Trust in Step 19 ---
+# --- Trust Path Evaluation ---
 
 def test_trust_path_evidence_unavailable():
     cert = _build_dummy_cert()
@@ -233,14 +233,14 @@ def test_trust_path_evidence_supplied_yields_needs_context_not_match():
     res = identity_analyzer.analyze(cert, trust_path_context=trust_ctx)
 
     rel = next(r for r in res.relationships if r.relationship_type == IdentityRelationshipType.CERTIFICATE_VS_TRUST_PATH)
-    # Fix 2: Step 19 surfaces trust context as NEEDS_CONTEXT, never MATCH
+    # Surfaces trust context as NEEDS_CONTEXT, never MATCH
     assert rel.status == IdentityStatus.NEEDS_CONTEXT
     assert "step 19 does not independently validate" in rel.explanation.lower()
     for lim in rel.limitations:
         assert "trusted" not in lim or "does not claim" in lim
 
 
-# --- Fix 4: Evidence Traceability and Provenance ---
+# --- Evidence Traceability and Provenance ---
 
 def test_evidence_traceability_survives_into_relationships():
     cert = _build_dummy_cert(

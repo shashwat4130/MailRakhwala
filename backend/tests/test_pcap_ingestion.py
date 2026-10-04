@@ -1,5 +1,5 @@
 """
-Tests for Step 06: Secure PCAP Ingestion
+Tests for Secure PCAP Ingestion
 Validates magic numbers, endianness, truncated headers, size bounds, and path containment.
 """
 

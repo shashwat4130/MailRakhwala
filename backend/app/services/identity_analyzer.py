@@ -1,5 +1,5 @@
 """
-MailRakhwala Identity & Trust Analyzer Service (Step 19)
+MailRakhwala Identity & Trust Analyzer Service
 Deterministic, passive correlation of TLS SNI, Certificate SAN,
 observed mail-server hostnames, and offline context.
 """
@@ -73,7 +73,7 @@ class IdentityAnalyzer:
         dns_mx_context: Optional[Dict[str, Any]] = None,
         trust_path_context: Optional[Dict[str, Any]] = None,
     ) -> IdentityAnalysisResult:
-        # Strict Fix 1: Only actual DNS SAN entries are used for SAN comparisons.
+        # Only actual DNS SAN entries are used for SAN comparisons.
         # Subject CN is NEVER used as a fallback substitute for SAN.
         san_dns_list: List[str] = []
         if cert.san and cert.san.has_san and cert.san.dns_names:
@@ -389,7 +389,7 @@ class IdentityAnalyzer:
                 **common_meta,
             )
 
-        # Conservative semantics (Fix 3): absence of direct match in MX list is NEEDS_CONTEXT, NOT MISMATCH
+        # Conservative semantics: absence of direct match in MX list is NEEDS_CONTEXT, NOT MISMATCH
         return IdentityRelationship(
             relationship_type=IdentityRelationshipType.MAIL_IDENTITY_VS_DNS_MX,
             left_name="Observed Host/Domain",
@@ -440,7 +440,7 @@ class IdentityAnalyzer:
             )
 
         tp_status = str(trust_context.get("trust_path_status", "UNKNOWN"))
-        # Fix 2: Step 19 surfaces trust-path context as NEEDS_CONTEXT (never MATCH) and disclaims independent validation
+        # Surfaces trust-path context as NEEDS_CONTEXT (never MATCH) and disclaims independent validation
         return IdentityRelationship(
             relationship_type=IdentityRelationshipType.CERTIFICATE_VS_TRUST_PATH,
             left_name="Presented Certificate",

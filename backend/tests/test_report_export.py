@@ -1,5 +1,5 @@
 """
-Tests for Step 29 Enterprise Report Export (JSON and PDF generation).
+Tests for Enterprise Report Export (JSON and PDF generation).
 Verifies that outputs maintain precise, neutral terminology and non-calibrated models.
 """
 

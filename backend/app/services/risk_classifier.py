@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+import joblib
 import numpy as np
 from xgboost import XGBClassifier
 
@@ -45,9 +47,9 @@ class TrainingDataError(ValueError):
 
 class XGBoostRiskClassifier:
     """
-    Step 27: Supervised XGBoost risk classifier for cryptographic configurations.
+    Supervised XGBoost risk classifier for cryptographic configurations.
     
-    Consumes Step 25's 19-dimensional numerical feature vectors.
+    Consumes 19-dimensional numerical feature vectors.
     Classifies configurations into LOW, MEDIUM, HIGH, or CRITICAL categories.
     Handles -1.0 unknown values using learned reference-column medians without
     altering the original feature vector for output traceability.
@@ -245,21 +247,36 @@ class XGBoostRiskClassifier:
         X = np.array([imputed_features], dtype=np.float64)
 
         prob_array = self.model.predict_proba(X)[0]
-        class_id = int(np.argmax(prob_array))
-        predicted_class = ID_TO_LABEL[class_id]
-
+        # Strict mapping using model.classes_ directly
         class_probabilities: Dict[str, float] = {}
-        for idx in range(len(ALLOWED_CLASSES)):
-            class_name = ID_TO_LABEL[idx]
+        for idx, cls_val in enumerate(self.model.classes_):
+            cls_int = int(cls_val)
+            class_name = ID_TO_LABEL[cls_int]
             class_probabilities[class_name] = float(prob_array[idx])
+
+        # Guarantee all 4 classes exist in mapping
+        for c_name in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
+            if c_name not in class_probabilities:
+                class_probabilities[c_name] = 0.0
+
+        best_cls_val = self.model.classes_[int(np.argmax(prob_array))]
+        class_id = int(best_cls_val)
+        predicted_class = ID_TO_LABEL[class_id]
+        confidence = float(class_probabilities[predicted_class])
 
         status_text = f"Risk classification predicted as {predicted_class} by the trained XGBoost model."
 
         return RiskClassificationResult(
+            available=True,
             stream_id=s_id,
+            prediction=predicted_class,
             predicted_class=predicted_class,
+            class_name=predicted_class,
             class_id=class_id,
+            confidence=confidence,
             class_probabilities=class_probabilities,
+            probabilities=class_probabilities,
+            classes=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
             feature_count=EXPECTED_FEATURE_COUNT,
             status_text=status_text,
             model_metadata=self.metadata,
@@ -296,29 +313,41 @@ class XGBoostRiskClassifier:
         X = np.array(imputed_matrix, dtype=np.float64)
 
         prob_matrix = self.model.predict_proba(X)
-        pred_indices = np.argmax(prob_matrix, axis=1)
+        pred_argm = np.argmax(prob_matrix, axis=1)
 
         results: List[RiskClassificationResult] = []
         distribution: Dict[str, int] = {c: 0 for c in sorted(ALLOWED_CLASSES)}
 
         for idx in range(len(feature_vectors)):
-            class_id = int(pred_indices[idx])
+            best_val = self.model.classes_[int(pred_argm[idx])]
+            class_id = int(best_val)
             predicted_class = ID_TO_LABEL[class_id]
             distribution[predicted_class] += 1
 
             probs: Dict[str, float] = {}
-            for c_idx in range(len(ALLOWED_CLASSES)):
-                c_name = ID_TO_LABEL[c_idx]
+            for c_idx, cls_val in enumerate(self.model.classes_):
+                c_name = ID_TO_LABEL[int(cls_val)]
                 probs[c_name] = float(prob_matrix[idx][c_idx])
 
+            for c_name in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
+                if c_name not in probs:
+                    probs[c_name] = 0.0
+
+            conf = float(probs[predicted_class])
             status_text = f"Risk classification predicted as {predicted_class} by the trained XGBoost model."
 
             results.append(
                 RiskClassificationResult(
+                    available=True,
                     stream_id=stream_ids[idx],
+                    prediction=predicted_class,
                     predicted_class=predicted_class,
+                    class_name=predicted_class,
                     class_id=class_id,
+                    confidence=conf,
                     class_probabilities=probs,
+                    probabilities=probs,
+                    classes=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
                     feature_count=EXPECTED_FEATURE_COUNT,
                     status_text=status_text,
                     model_metadata=self.metadata,
@@ -331,3 +360,40 @@ class XGBoostRiskClassifier:
             total_evaluated=len(results),
             class_distribution=distribution,
         )
+
+    def save(self, filepath: Union[str, Path]) -> None:
+        """Serializes the fitted classifier and training imputation values to disk."""
+        if not self._is_fitted or self.model is None or self._imputation_values is None:
+            raise ModelNotFittedError("Cannot save an unfitted classifier.")
+        data = {
+            "model": self.model,
+            "_is_fitted": self._is_fitted,
+            "_imputation_values": self._imputation_values,
+            "n_estimators": self.n_estimators,
+            "max_depth": self.max_depth,
+            "learning_rate": self.learning_rate,
+            "subsample": self.subsample,
+            "colsample_bytree": self.colsample_bytree,
+            "random_state": self.random_state,
+            "feature_count": EXPECTED_FEATURE_COUNT,
+        }
+        joblib.dump(data, filepath)
+
+    @classmethod
+    def load(cls, filepath: Union[str, Path]) -> "XGBoostRiskClassifier":
+        """Loads a previously fitted classifier and training imputation values from disk."""
+        data = joblib.load(filepath)
+        if not isinstance(data, dict) or "model" not in data or "_imputation_values" not in data:
+            raise ValueError(f"Invalid XGBoost artifact structure in {filepath}")
+        classifier = cls(
+            n_estimators=data.get("n_estimators", 100),
+            max_depth=data.get("max_depth", 4),
+            learning_rate=data.get("learning_rate", 0.1),
+            subsample=data.get("subsample", 1.0),
+            colsample_bytree=data.get("colsample_bytree", 1.0),
+            random_state=data.get("random_state", 42),
+        )
+        classifier.model = data["model"]
+        classifier._is_fitted = data.get("_is_fitted", True)
+        classifier._imputation_values = data["_imputation_values"]
+        return classifier

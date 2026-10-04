@@ -1,5 +1,5 @@
 """
-MailRakhwala Core Domain Data Contracts (Step 3 & Step 15 extensions)
+MailRakhwala Core Domain Data Contracts
 """
 
 from datetime import datetime, timezone

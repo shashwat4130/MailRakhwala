@@ -1,6 +1,6 @@
 """
 MailRakhwala Comprehensive Analysis Report Schema.
-Step 29 Enterprise Reporting: Integrates Steps 21–28 deterministic findings,
+Enterprise Reporting: Integrates deterministic findings,
 ML feature vectors, anomaly detection, risk classification, and SHAP explainability.
 """
 
@@ -58,6 +58,16 @@ class SessionMetadata(BaseModel):
     total_streams: int = Field(
         default=1,
         description="Total email TCP streams evaluated",
+    )
+
+    applicability: str = Field(
+        default="APPLICABLE",
+        description="Assessment applicability: APPLICABLE or NOT_APPLICABLE",
+    )
+
+    assessment_status: str = Field(
+        default="EVALUATED",
+        description="Assessment execution status: EVALUATED, NOT_APPLICABLE, or NOT_EVALUATED",
     )
 
 
@@ -164,6 +174,21 @@ class ComprehensiveAnalysisReport(BaseModel):
 
     session: SessionMetadata
 
+    applicability: str = Field(
+        default="APPLICABLE",
+        description="Assessment applicability: APPLICABLE or NOT_APPLICABLE",
+    )
+
+    assessment_status: str = Field(
+        default="EVALUATED",
+        description="Assessment execution status: EVALUATED, NOT_APPLICABLE, or NOT_EVALUATED",
+    )
+
+    applicability_reason: Optional[str] = Field(
+        default=None,
+        description="Forensic explanation of applicability determination",
+    )
+
     protocol_summary: ProtocolSecuritySummary
 
     posture_report: CryptographicPostureReport
@@ -184,7 +209,7 @@ class ComprehensiveAnalysisReport(BaseModel):
         default_factory=list,
     )
 
-    # ML Pipeline Results (Steps 25–28)
+    # ML Pipeline Results
 
     feature_vector: Optional[MLFeatureVector] = None
 
@@ -198,7 +223,7 @@ class ComprehensiveAnalysisReport(BaseModel):
         default=(
             "Cryptographic Security Scores and Compliance Findings are derived "
             "deterministically from RFC compliance policies and PKI specifications. "
-            "ML Risk Classifications reflect Step 27 XGBoost model probabilities "
+            "ML Risk Classifications reflect XGBoost model probabilities "
             "and do not represent empirical attack frequencies. "
             "Anomaly Detection flags statistical outliers relative to reference "
             "distributions. SHAP attributions indicate mathematical feature "

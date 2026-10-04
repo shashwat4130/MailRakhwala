@@ -24,6 +24,17 @@ def _resolve_rules_dir() -> Path:
     return repo_root_rules
 
 
+def _resolve_models_dir() -> Path:
+    env_path = os.getenv("MODELS_DIR")
+    if env_path:
+        return Path(env_path)
+    repo_models = Path(__file__).resolve().parents[3] / "data" / "models"
+    if repo_models.is_dir():
+        return repo_models
+    backend_models = Path(__file__).resolve().parents[2] / "data" / "models"
+    return backend_models
+
+
 def _resolve_static_dir() -> Optional[Path]:
     env_path = os.getenv("STATIC_DIR")
     if env_path:
@@ -47,6 +58,10 @@ class Settings(BaseModel):
         default=Path(__file__).resolve().parent.parent.parent / "data" / "uploads",
         description="Controlled directory for temporary capture storage"
     )
+    MODELS_DIR: Path = Field(
+        default_factory=_resolve_models_dir,
+        description="Controlled directory for ML model artifacts"
+    )
     RULES_DIR: Path = Field(
         default_factory=_resolve_rules_dir,
         description="Path to canonical security rules catalog directory"
@@ -63,7 +78,7 @@ class Settings(BaseModel):
         description="Allowed frontend origins for CORS"
     )
 
-    # Step 08: TCP Stream Reconstruction Configuration
+    # TCP Stream Reconstruction Configuration
     TCP_STREAM_MAX_ACTIVE_STREAMS: int = 1000
     TCP_STREAM_MAX_BYTES_PER_DIR: int = 512 * 1024  # 512 KB per direction
     TCP_STREAM_MAX_SEGMENTS_BUFFERED: int = 500      # Out-of-order segment window
@@ -81,6 +96,7 @@ class Settings(BaseModel):
         custom_upload = os.getenv("UPLOAD_DIR")
         upload_path = Path(custom_upload) if custom_upload else cls.model_fields["UPLOAD_DIR"].default
 
+        models_dir = _resolve_models_dir()
         rules_dir = _resolve_rules_dir()
         static_dir = _resolve_static_dir()
 
@@ -94,6 +110,7 @@ class Settings(BaseModel):
             APP_ENV=env,
             MAX_PCAP_SIZE_MB=max_size,
             UPLOAD_DIR=upload_path,
+            MODELS_DIR=models_dir,
             RULES_DIR=rules_dir,
             STATIC_DIR=static_dir,
             CORS_ORIGINS=cors_origins,
@@ -102,3 +119,4 @@ class Settings(BaseModel):
 
 settings = Settings.load_from_env()
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+settings.MODELS_DIR.mkdir(parents=True, exist_ok=True)

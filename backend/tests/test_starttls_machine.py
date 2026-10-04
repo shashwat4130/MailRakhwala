@@ -1,7 +1,6 @@
 """
-Tests for Step 10: STARTTLS State Machine
-Full 40-test suite preserving all original scenarios (SMTP 1-11, IMAP 12-17, POP3 18-22,
-Cross-protocol 23-31) plus 9 comprehensive wire-chronology tests.
+Tests for STARTTLS State Machine
+Covers SMTP, IMAP, and POP3 explicit TLS transitions and wire-chronology validation.
 """
 
 from typing import List, Optional
@@ -64,9 +63,7 @@ def make_classification(
     )
 
 
-# ==========================================================
-# 1. ORIGINAL SCENARIOS: SMTP (Tests 1-11)
-# ==========================================================
+# SMTP Scenarios
 
 def test_smtp_advertised():
     stream = make_stream(
@@ -180,9 +177,7 @@ def test_smtp_starttls_in_unrelated_message_content():
     assert res.starttls_state != StarttlsState.STARTTLS_REQUESTED
 
 
-# ==========================================================
-# 2. ORIGINAL SCENARIOS: IMAP (Tests 12-17)
-# ==========================================================
+# IMAP Scenarios
 
 def test_imap_success():
     stream = make_stream(
@@ -246,9 +241,7 @@ def test_imap_gapped():
     assert res.unresolved_gaps is True
 
 
-# ==========================================================
-# 3. ORIGINAL SCENARIOS: POP3 (Tests 18-22)
-# ==========================================================
+# POP3 Scenarios
 
 def test_pop3_success():
     stream = make_stream(
@@ -301,9 +294,7 @@ def test_pop3_gapped():
     assert res.unresolved_gaps is True
 
 
-# ==========================================================
-# 4. ORIGINAL SCENARIOS: Cross-Protocol & Edge Cases (Tests 23-31)
-# ==========================================================
+# Cross-Protocol & Edge Cases
 
 def test_implicit_tls_port_465():
     res = starttls_machine.evaluate_stream(
@@ -389,9 +380,7 @@ def test_tls_record_without_starttls_context():
     assert res.starttls_state != StarttlsState.SUCCEEDED
 
 
-# ==========================================================
-# 5. NEW REQUIRED WIRE-CHRONOLOGY REGRESSION TESTS (Tests 32-40)
-# ==========================================================
+# Wire-Chronology Regression Tests
 
 def test_acceptance_packet_before_request_rejected():
     """32. Acceptance packet appears before STARTTLS request packet: must NOT succeed."""

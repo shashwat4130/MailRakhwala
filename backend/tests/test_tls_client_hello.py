@@ -1,5 +1,5 @@
 """
-Unit tests for Step 13: TLS ClientHello Parser.
+Unit tests for TLS ClientHello Parser.
 Verifies parsing of handshake headers, client offerings, recognized extensions,
 multi-record fragmentation, TCP gap disruptions, and strict length bounding.
 """

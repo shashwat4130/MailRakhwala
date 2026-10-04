@@ -5,7 +5,6 @@ import {
   ArrowRight,
   FileText,
   FileUp,
-  Menu,
   PlayCircle,
   X,
   Upload,
@@ -13,12 +12,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
-  Home as HomeIcon,
-  LayoutDashboard,
-  Network,
-  AlertTriangle as FindingsIcon,
-  FileText as ReportsIcon,
-  BookOpen,
 } from 'lucide-react';
 
 import {
@@ -26,6 +19,7 @@ import {
   getAnalysisJob,
   setActiveAnalysisId,
 } from '../services/api';
+import { useAnalysisContext } from '../context/AnalysisContext';
 
 const fadeUp = {
   hidden: {
@@ -45,7 +39,7 @@ const fadeUp = {
 };
 
 const RESOURCE_LINKS = {
-  demoVideo: 'https://www.youtube.com/watch?v=YOUR_VIDEO_ID',
+  demoVideo: 'https://youtu.be/qoJzP9L7Bps',
   documentation: '/mailrakhwala-documentation.pdf',
   demoPcap: '/mailrakhwala-demo.pcap',
 };
@@ -69,6 +63,7 @@ const menuItem = {
 
 export default function Home() {
   const navigate = useNavigate();
+  const { clear: clearAnalysisState } = useAnalysisContext();
 
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -99,6 +94,9 @@ export default function Home() {
         if (job.status === 'completed') {
           setActiveAnalysisId(uploadResult.analysis_id);
           clearInterval(interval);
+          if (demoMode) {
+            navigate('/dashboard');
+          }
         }
 
         if (job.status === 'failed') {
@@ -165,6 +163,8 @@ export default function Home() {
   const handleUpload = async () => {
     if (!file) return;
 
+    // Clear stale analysis state so prior results do not linger
+    clearAnalysisState();
     setUploading(true);
     setErrorMessage(null);
     setDemoMode(false);
@@ -189,6 +189,8 @@ export default function Home() {
   const handleDemoPcap = async () => {
     if (uploading) return;
 
+    // Clear stale analysis state so prior results do not linger
+    clearAnalysisState();
     setUploading(true);
     setErrorMessage(null);
     setUploadResult(null);
@@ -230,6 +232,7 @@ export default function Home() {
   };
 
   const handleReset = () => {
+    clearAnalysisState();
     setFile(null);
     setUploadResult(null);
     setErrorMessage(null);
@@ -260,7 +263,7 @@ export default function Home() {
     jobStatus !== 'failed';
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#f8fbff] text-[#192837]">
+    <div className="relative min-h-full w-full bg-[#f8fbff] text-[#192837] py-6 sm:py-8 px-4 sm:px-6 flex flex-col items-center">
       <div className="absolute inset-0 bg-white" />
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -292,24 +295,14 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.96)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)]" />
       </div>
 
-      <div className="relative z-10 flex h-full flex-col">
-        <header className="absolute left-4 right-4 top-4 z-30 flex items-center justify-between gap-3 sm:left-7 sm:right-7 sm:top-5">
-          <motion.button
-            type="button"
-            onClick={() => setMobileMenuOpen(true)}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.92 }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-white/85 text-[#192837] shadow-[0_8px_28px_rgba(15,76,160,0.10)] backdrop-blur-xl transition-all hover:border-blue-200 hover:text-[#0B5ED7]"
-            aria-label="Open navigation sidebar"
-          >
-            <Menu className="h-5 w-5" />
-          </motion.button>
-
-          <div className="flex items-center gap-2 rounded-[20px] border border-blue-100/80 bg-white/88 p-2 shadow-[0_12px_34px_rgba(15,76,160,0.12)] backdrop-blur-xl">
+      <div className="relative z-10 w-full max-w-[860px] flex flex-col items-center">
+        {/* Quick Reference Actions */}
+        <div className="w-full flex justify-end mb-3">
+          <div className="flex items-center gap-2 rounded-[20px] border border-blue-100/80 bg-white/88 p-1.5 shadow-[0_8px_24px_rgba(15,76,160,0.08)] backdrop-blur-xl">
             <button
               type="button"
               onClick={() => window.open(RESOURCE_LINKS.demoVideo, '_blank', 'noopener,noreferrer')}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0B5ED7] px-3.5 text-[10px] font-extrabold text-white shadow-[0_6px_18px_rgba(11,94,215,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#084FB8] sm:px-5 sm:text-xs"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#0B5ED7] px-3.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#084FB8]"
             >
               <PlayCircle className="h-4 w-4" />
               <span>Demo Video</span>
@@ -318,131 +311,15 @@ export default function Home() {
             <button
               type="button"
               onClick={() => navigate('/documentation')}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#061A3A] px-3.5 text-[10px] font-extrabold text-white shadow-[0_6px_18px_rgba(6,26,58,0.20)] transition-all hover:-translate-y-0.5 hover:bg-[#0B4EA2] sm:px-5 sm:text-xs"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#061A3A] px-3.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#0B4EA2]"
             >
               <FileText className="h-4 w-4" />
               <span>Documentation</span>
             </button>
           </div>
-        </header>
+        </div>
 
-        {/* ======================================================
-            HIDDEN SIDEBAR
-            ====================================================== */}
-
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <>
-              <motion.button
-                type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                className="fixed inset-0 z-40 bg-[#192837]/20 backdrop-blur-[3px]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                aria-label="Close navigation sidebar"
-              />
-
-              <motion.aside
-                className="fixed left-0 top-0 z-50 h-[100dvh] w-[min(86vw,300px)] border-r border-[#0B5ED7]/10 bg-white/95 shadow-[12px_0_48px_rgba(25,40,55,0.14)] backdrop-blur-2xl"
-                initial={{ x: '-100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '-100%' }}
-                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <div className="flex h-full flex-col">
-                  <div className="flex items-center justify-between px-5 py-5">
-                    <div className="relative flex h-[66px] w-[175px] items-center overflow-visible">
-                      <video
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        src="/mailrakhwala-logo.mp4"
-                        className="absolute left-0 top-1/2 h-[92px] w-[180px] -translate-y-1/2 scale-[1.1] object-contain object-left"
-                        aria-label="MailRakhwala"
-                      />
-                    </div>
-
-                    <motion.button
-                      type="button"
-                      onClick={() => setMobileMenuOpen(false)}
-                      whileTap={{ scale: 0.9 }}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B5ED7]/7 text-[#192837] transition-colors hover:bg-[#0B5ED7]/12 hover:text-[#0B5ED7]"
-                      aria-label="Close navigation sidebar"
-                    >
-                      <X className="h-5 w-5" />
-                    </motion.button>
-                  </div>
-
-                  <div className="mx-5 h-px bg-[#0B5ED7]/10" />
-
-                  <nav className="flex flex-col gap-1.5 px-4 py-6">
-                    {[
-                      { label: 'Home', href: '/', icon: HomeIcon },
-                      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-                      { label: 'Stream Analysis', href: '/analysis', icon: Network },
-                      { label: 'Findings & CVEs', href: '/findings', icon: FindingsIcon },
-                      { label: 'Forensic Reports', href: '/reports', icon: ReportsIcon },
-                      { label: 'Documentation', href: '/documentation', icon: BookOpen },
-                    ].map((item, index) => {
-                      const Icon = item.icon;
-                      const isActive =
-                        item.href === '/'
-                          ? window.location.pathname === '/'
-                          : window.location.pathname.startsWith(item.href);
-
-                      return (
-                        <motion.button
-                          key={item.href}
-                          type="button"
-                          custom={index}
-                          variants={menuItem}
-                          initial="hidden"
-                          animate="visible"
-                          onClick={() => {
-                            setMobileMenuOpen(false);
-                            navigate(item.href);
-                          }}
-                          className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition-all ${
-                            isActive
-                              ? 'bg-[#0B5ED7]/10 text-[#0B5ED7] shadow-sm'
-                              : 'text-[#192837]/70 hover:bg-[#0B5ED7]/5 hover:text-[#0B5ED7]'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                              isActive
-                                ? 'bg-[#0B5ED7]/10 text-[#0B5ED7]'
-                                : 'bg-slate-50 text-slate-500 group-hover:bg-blue-50 group-hover:text-[#0B5ED7]'
-                            }`}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span>{item.label}</span>
-                        </motion.button>
-                      );
-                    })}
-                  </nav>
-
-                  <div className="mt-auto px-5 pb-6">
-                    <div className="rounded-2xl border border-[#0B5ED7]/10 bg-[#0B5ED7]/5 px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#0B5ED7]">
-                        MailRakhwala
-                      </p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-[#192837]/50">
-                        Email security intelligence for captured traffic.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
-
-        <main className="flex min-h-0 flex-1 items-start justify-center overflow-hidden px-5 pb-3 pt-16 sm:px-8 sm:pb-4 sm:pt-14">
-          <div className="w-full max-w-[860px]">
+        <div className="w-full max-w-[860px]">
             <motion.div
               initial={{ opacity: 0, scale: 0.88, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -467,7 +344,7 @@ export default function Home() {
                   loop
                   playsInline
                   src="/mailrakhwala-logo.mp4"
-                  className="h-full w-full object-contain mix-blend-multiply"
+                  className="h-full w-full scale-[1.35] object-contain object-center mix-blend-multiply sm:scale-100"
                   aria-label="MailRakhwala"
                 />
               </motion.div>
@@ -551,10 +428,39 @@ export default function Home() {
                       </h2>
 
                       <p className="mt-1 max-w-[500px] text-center text-xs text-[#192837]/50 sm:text-[13px]">
-                        Upload a PCAP to inspect protocols, TLS security, findings, and posture.
+                        Inspect protocol boundaries, TLS security, deterministic RFC findings, and posture.
                       </p>
 
-                      <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+                      {/* Primary Quick Start: View Demo Dashboard */}
+                      <motion.button
+                        type="button"
+                        onClick={handleDemoPcap}
+                        disabled={uploading}
+                        whileHover={!uploading ? { y: -1 } : {}}
+                        whileTap={!uploading ? { scale: 0.98 } : {}}
+                        className="mt-3 inline-flex min-w-[240px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#2F80ED] to-[#22B8CF] px-7 py-3.5 text-sm font-extrabold text-white shadow-[0_8px_24px_rgba(47,128,237,0.22)] ring-1 ring-white/45 transition-all hover:-translate-y-0.5 hover:brightness-[1.04] hover:saturate-[1.08] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {uploading && demoMode ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Database className="h-4 w-4" />
+                        )}
+                        <span>{uploading && demoMode ? 'Analyzing Demo...' : 'View Demo Dashboard'}</span>
+                      </motion.button>
+
+                      <p className="mt-1.5 text-center text-[9px] text-slate-400">
+                        Loads the bundled multi-rule demo PCAP through the real analysis pipeline.
+                      </p>
+
+                      <div className="mt-3 flex w-full items-center justify-center">
+                        <div className="h-px w-20 bg-blue-100" />
+                        <span className="px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                          or upload your own
+                        </span>
+                        <div className="h-px w-20 bg-blue-100" />
+                      </div>
+
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                         {file && (
                           <motion.button
                             type="button"
@@ -562,15 +468,15 @@ export default function Home() {
                             disabled={uploading}
                             whileHover={!uploading ? { scale: 1.025 } : {}}
                             whileTap={!uploading ? { scale: 0.97 } : {}}
-                            className="order-1 inline-flex min-w-[215px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#2F80ED] to-[#22B8CF] px-7 py-3.5 text-sm font-extrabold text-white shadow-[0_8px_24px_rgba(47,128,237,0.22)] ring-1 ring-white/45 transition-all hover:-translate-y-0.5 hover:brightness-[1.04] hover:saturate-[1.08] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="order-1 inline-flex min-w-[215px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#2F80ED] to-[#22B8CF] px-7 py-3 text-sm font-extrabold text-white shadow-[0_8px_24px_rgba(47,128,237,0.22)] ring-1 ring-white/45 transition-all hover:-translate-y-0.5 hover:brightness-[1.04] hover:saturate-[1.08] disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {uploading ? (
+                            {uploading && !demoMode ? (
                               <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
                               <Upload className="h-4 w-4" />
                             )}
 
-                            {uploading
+                            {uploading && !demoMode
                               ? 'Uploading...'
                               : 'Start Analysis'}
                           </motion.button>
@@ -581,40 +487,16 @@ export default function Home() {
                           onClick={() => fileInputRef.current?.click()}
                           whileHover={{ scale: 1.025 }}
                           whileTap={{ scale: 0.97 }}
-                          className={`inline-flex min-w-[215px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#2F80ED] to-[#22B8CF] px-7 py-3.5 text-sm font-extrabold text-white shadow-[0_8px_24px_rgba(47,128,237,0.20)] ring-1 ring-white/45 transition-all hover:-translate-y-0.5 hover:brightness-[1.04] hover:saturate-[1.08] ${
+                          className={`inline-flex min-w-[215px] items-center justify-center gap-2 rounded-full border border-blue-200 bg-white/90 px-7 py-3 text-sm font-extrabold text-[#0B5ED7] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-blue-50/80 ${
                             file ? 'order-2' : 'order-1'
                           }`}
                         >
                           <FileUp className="h-4 w-4" />
-                          {file ? 'Change PCAP' : 'Choose PCAP'}
+                          {file ? 'Change PCAP' : 'Upload Your Own PCAP'}
                         </motion.button>
                       </div>
 
-                      <div className="mt-3.5 flex w-full items-center justify-center">
-                        <div className="h-px w-20 bg-blue-100" />
-                        <span className="px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                          or
-                        </span>
-                        <div className="h-px w-20 bg-blue-100" />
-                      </div>
-
-                      <motion.button
-                        type="button"
-                        onClick={handleDemoPcap}
-                        disabled={uploading}
-                        whileHover={!uploading ? { y: -1 } : {}}
-                        whileTap={!uploading ? { scale: 0.98 } : {}}
-                        className="mt-2.5 inline-flex min-w-[215px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#2F80ED] to-[#22B8CF] px-7 py-3.5 text-sm font-extrabold text-white shadow-[0_8px_24px_rgba(47,128,237,0.22)] ring-1 ring-white/45 transition-all hover:-translate-y-0.5 hover:brightness-[1.04] hover:saturate-[1.08] disabled:cursor-not-allowed disabled:opacity-60 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Database className="h-3.5 w-3.5" />
-                        Try Demo PCAP
-                      </motion.button>
-
-                      <p className="mt-1.5 text-center text-[8px] text-slate-400">
-                        Run the prepared capture through the same real analysis flow.
-                      </p>
-
-                      <p className="mt-3 text-[9px] font-semibold tracking-[0.12em] text-[#192837]/35">
+                      <p className="mt-2.5 text-[9px] font-semibold tracking-[0.12em] text-[#192837]/35">
                         PCAP · PCAPNG
                       </p>
 
@@ -625,9 +507,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* ==================================================
-                  SELECTED FILE
-                  ================================================== */}
 
               {file && !uploadResult && (
                 <motion.div
@@ -730,7 +609,6 @@ export default function Home() {
 
                   </div>
 
-                  {/* Processing */}
                   {isProcessing && (
                     <div className="mt-3 rounded-xl bg-[#0B5ED7]/5 px-3.5 py-3">
 
@@ -761,7 +639,6 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Completed */}
                   {jobStatus === 'completed' && (
                     <button
                       type="button"
@@ -786,7 +663,6 @@ export default function Home() {
                     </button>
                   )}
 
-                  {/* Failed */}
                   {jobStatus === 'failed' && (
                     <button
                       type="button"
@@ -802,9 +678,7 @@ export default function Home() {
 
             </motion.div>
 
-          </div>
-
-        </main>
+        </div>
 
       </div>
     </div>

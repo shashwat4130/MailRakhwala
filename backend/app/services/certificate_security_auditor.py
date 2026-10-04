@@ -1,5 +1,5 @@
 """
-MailRakhwala Certificate Security Auditor Service (Step 18)
+MailRakhwala Certificate Security Auditor Service
 Deterministic, passive security audit evaluating parsed X.509 properties.
 """
 
@@ -20,7 +20,7 @@ from app.schemas.certificate_security_audit import (
 )
 from app.schemas.domain import ConfidenceLevel, FindingCategory, SeverityLevel, TriState
 
-# Step 18 Deterministic Policy Constants (NIST SP 800-52r2 / RFC 9155 baselines)
+# Deterministic Policy Constants (NIST SP 800-52r2 / RFC 9155 baselines)
 DEPRECATED_SIGNATURE_DIGESTS = {"md5", "sha1", "md2"}
 DEPRECATED_CURVES = {"secp160r1", "secp192r1", "prime192v1", "c2pnb163v1"}
 MIN_RSA_KEY_BITS = 2048
@@ -371,7 +371,7 @@ class CertificateSecurityAuditor:
                     ),
                     recommendation="Deploy a certificate issued by a recognized CA or verify if self-signed cert is intended for this environment.",
                     limitations=[
-                        "Subject/Issuer equality indicates self-signed status; cryptographic trust path validation occurs in Step 20."
+                        "Subject/Issuer equality indicates self-signed status; cryptographic trust path validation occurs in trust verification analysis."
                     ]
                 )
             )

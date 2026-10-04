@@ -1,5 +1,5 @@
 """
-MailRakhwala Deterministic Cryptographic Compliance Engine Schemas (Step 21)
+MailRakhwala Deterministic Cryptographic Compliance Engine Schemas
 Data contracts for evaluating observed forensic telemetry against deterministic security rules.
 """
 
@@ -28,7 +28,7 @@ class ComplianceEvidence(BaseModel):
     observed_property: str = Field(..., description="The observed attribute or parameter name")
     observed_value: Any = Field(..., description="The raw or normalized value observed")
     reference_value: Optional[Any] = Field(default=None, description="The expected standard baseline or threshold")
-    rule_id: str = Field(..., description="Authoritative rule identifier from Step 4 rulebook")
+    rule_id: str = Field(..., description="Authoritative rule identifier from rule catalog")
     source_component: str = Field(default="PCAP_OBSERVATION", description="Pipeline stage producing the evidence")
 
 

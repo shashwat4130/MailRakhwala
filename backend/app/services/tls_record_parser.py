@@ -1,6 +1,6 @@
 """
-MailRakhwala TLS Record Layer Parser Service (Step 12)
-Passive, bounded parser extracting 5-byte TLS record headers and payloads from Step 8 streams.
+MailRakhwala TLS Record Layer Parser Service
+Passive, bounded parser extracting 5-byte TLS record headers and payloads from reconstructed streams.
 """
 
 import struct
@@ -83,6 +83,21 @@ class TLSRecordParser:
         payload_len = len(payload)
         record_idx = 0
         stream_has_gap = result.has_unresolved_gaps
+
+        # For explicit TLS upgrades (e.g. STARTTLS), cleartext protocol negotiation
+        # may precede the initial TLS record. If payload does not start with a valid TLS record header,
+        # locate the first valid TLS record header offset.
+        if payload_len >= TLS_RECORD_HEADER_LEN:
+            first_byte = payload[0]
+            first_ver = (payload[1] << 8) | payload[2]
+            if first_byte not in (20, 21, 22, 23, 24) or first_ver not in (0x0300, 0x0301, 0x0302, 0x0303, 0x0304):
+                for scan_idx in range(payload_len - TLS_RECORD_HEADER_LEN + 1):
+                    ct = payload[scan_idx]
+                    v = (payload[scan_idx + 1] << 8) | payload[scan_idx + 2]
+                    d_len = (payload[scan_idx + 3] << 8) | payload[scan_idx + 4]
+                    if ct in (20, 21, 22, 23, 24) and v in (0x0300, 0x0301, 0x0302, 0x0303, 0x0304) and 0 < d_len <= TLS_RECORD_MAX_PAYLOAD:
+                        offset = scan_idx
+                        break
 
         while offset < payload_len:
             remaining_bytes = payload_len - offset

@@ -1,4 +1,4 @@
-"""Unit tests verifying Step 3 Domain Data Contracts."""
+"""Unit tests verifying Domain Data Contracts."""
 
 from datetime import datetime, timezone
 import pytest

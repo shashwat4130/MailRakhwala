@@ -1,5 +1,5 @@
 """
-Tests for Step 09: Email Protocol Classification
+Tests for Email Protocol Classification
 Covers multi-signal classification, confidence scaling, false-positive protection,
 gap awareness, directionality, and implicit TLS handling.
 """

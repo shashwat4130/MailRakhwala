@@ -1,6 +1,6 @@
 """
 MailRakhwala PDF Report Generator.
-Step 29 Enterprise Reporting: Generates human-readable audit PDF reports
+Enterprise Reporting: Generates human-readable audit PDF reports
 directly from the authoritative ComprehensiveAnalysisReport model.
 
 Important semantic rule:
@@ -147,10 +147,14 @@ class PDFReportGenerator:
             fallback="",
         ).strip().upper()
 
-        has_email_signals = (
-            total_streams > 0
-            and detected_protocol in EMAIL_PROTOCOLS
-        )
+        report_applicability = getattr(self.report, "applicability", None) or getattr(session, "applicability", None)
+        if report_applicability == "NOT_APPLICABLE":
+            has_email_signals = False
+        else:
+            has_email_signals = (
+                total_streams > 0
+                and detected_protocol in EMAIL_PROTOCOLS
+            )
 
         return {
             "total_streams": total_streams,
@@ -161,7 +165,7 @@ class PDFReportGenerator:
 
     def _score_text(self, assessed: bool) -> str:
         if not assessed:
-            return "Not Assessed"
+            return "Not Applicable"
 
         posture = getattr(self.report, "posture_report", None)
         if posture is None:
@@ -290,13 +294,11 @@ class PDFReportGenerator:
             scope_border = "#a7f3d0"
             scope_text_color = "#047857"
         else:
-            scope_title = "Email Security Assessment: NOT ASSESSED"
+            scope_title = "Email Security Assessment: NOT APPLICABLE"
             scope_text = (
-                "No identifiable SMTP, SMTPS, IMAP, IMAPS, POP3, or POP3S "
-                "traffic was detected. A reconstructed TCP stream alone does "
-                "not establish an email-security session. Cryptographic "
-                "posture, ML risk, anomaly analysis, and email findings are "
-                "therefore not assessed for this capture."
+                "No supported email protocols (SMTP, SMTPS, IMAP, IMAPS, POP3, POP3S) "
+                "were detected in this capture. No deterministic email-security findings, "
+                "cryptographic posture score, or ML risk classifications were evaluated."
             )
             scope_color = "#f5f3ff"
             scope_border = "#ddd6fe"
@@ -343,52 +345,52 @@ class PDFReportGenerator:
 
         if assessed and self.report.risk_classification:
             rc = self.report.risk_classification
-            predicted_class = getattr(rc, "predicted_class", None)
+            rc_available = getattr(rc, "available", True)
+            if rc_available:
+                predicted_class = getattr(rc, "predicted_class", None)
+                if predicted_class is None:
+                    predicted_class = getattr(rc, "predicted_risk_class", None)
+                class_id = getattr(rc, "class_id", None)
 
-            if predicted_class is None:
-                predicted_class = getattr(
-                    rc,
-                    "predicted_risk_class",
-                    None,
-                )
+                if predicted_class is not None:
+                    risk_val = (
+                        f"{predicted_class}"
+                        + (f" (ID: {class_id})" if class_id is not None else "")
+                    )
 
-            class_id = getattr(rc, "class_id", None)
-
-            if predicted_class is not None:
-                risk_val = (
-                    f"{predicted_class}"
-                    + (f" (ID: {class_id})" if class_id is not None else "")
-                )
-
-            probabilities = getattr(
-                rc,
-                "class_probabilities",
-                None,
-            )
-
-            if isinstance(probabilities, dict) and probabilities:
-                model_prob_text = ", ".join(
-                    f"{key}: {value:.2f}"
-                    for key, value in probabilities.items()
-                )
+                probabilities = getattr(rc, "class_probabilities", None) or getattr(rc, "probabilities", None)
+                if isinstance(probabilities, dict) and probabilities:
+                    model_prob_text = ", ".join(
+                        f"{key}: {value:.2f}"
+                        for key, value in probabilities.items()
+                    )
+            else:
+                rc_reason = getattr(rc, "reason", "model unavailable")
+                risk_val = f"Unavailable ({rc_reason})"
+                model_prob_text = "Unavailable"
 
         if assessed and self.report.anomaly_detection:
             ad = self.report.anomaly_detection
-            is_anomaly = getattr(ad, "is_anomaly", None)
-            anomaly_score = getattr(ad, "anomaly_score", None)
+            ad_available = getattr(ad, "available", True)
+            if ad_available:
+                is_anomaly = getattr(ad, "is_anomalous", getattr(ad, "is_anomaly", None))
+                anomaly_score = getattr(ad, "anomaly_score", None)
 
-            if isinstance(is_anomaly, bool):
-                if isinstance(anomaly_score, (int, float)):
-                    anomaly_val = (
-                        f"{'ANOMALOUS' if is_anomaly else 'NORMAL'} "
-                        f"(Score: {anomaly_score:.3f})"
-                    )
-                else:
-                    anomaly_val = (
-                        "ANOMALOUS"
-                        if is_anomaly
-                        else "NORMAL"
-                    )
+                if isinstance(is_anomaly, bool):
+                    if isinstance(anomaly_score, (int, float)):
+                        anomaly_val = (
+                            f"{'ANOMALOUS' if is_anomaly else 'NORMAL'} "
+                            f"(Score: {anomaly_score:.3f})"
+                        )
+                    else:
+                        anomaly_val = (
+                            "ANOMALOUS"
+                            if is_anomaly
+                            else "NORMAL"
+                        )
+            else:
+                ad_reason = getattr(ad, "reason", "model unavailable")
+                anomaly_val = f"Unavailable ({ad_reason})"
 
         exec_data = [
             [
@@ -747,8 +749,7 @@ class PDFReportGenerator:
             ),
         )
 
-        # Step numbers are implementation details and should not appear in
-        # the human-facing PDF. Keep the underlying JSON/report unchanged.
+        # Strip pipeline task numbers from human-facing PDF disclaimer text.
         disclaimer = re.sub(r"\\bStep\\s+\\d+\\b\\s*", "", disclaimer)
 
         story.append(

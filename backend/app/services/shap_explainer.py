@@ -58,11 +58,11 @@ class SHAPExplainerError(RuntimeError):
 
 class SHAPExplainerService:
     """
-    Step 28: SHAP Explainability Service.
+    SHAP Explainability Service.
     
-    Explains predictions made by a pre-trained Step 27 XGBoostRiskClassifier
+    Explains predictions made by a pre-trained XGBoostRiskClassifier
     using shap.TreeExplainer.
-    Reuses Step 27 reference median imputation without mutating original vectors.
+    Reuses reference median imputation without mutating original vectors.
     """
 
     def __init__(self, classifier: XGBoostRiskClassifier) -> None:
@@ -125,7 +125,7 @@ class SHAPExplainerService:
         feature_vector: Union[MLFeatureVector, Sequence[float]],
         stream_id: Optional[str] = None,
     ) -> SHAPExplanationResult:
-        """Explains a single Step 25 feature vector using the Step 27 model."""
+        """Explains a single ML feature vector using the trained risk model."""
         batch_res = self.explain_batch([feature_vector])
         res = batch_res.results[0]
         if stream_id:
@@ -136,7 +136,7 @@ class SHAPExplainerService:
         self,
         feature_vectors: Sequence[Union[MLFeatureVector, Sequence[float]]],
     ) -> BatchSHAPExplanationResult:
-        """Explains multiple Step 25 feature vectors preserving order, providing local and global attribution."""
+        """Explains multiple ML feature vectors preserving order, providing local and global attribution."""
         if not feature_vectors:
             return BatchSHAPExplanationResult(
                 results=[],
@@ -144,7 +144,7 @@ class SHAPExplainerService:
                 global_importance=[],
             )
 
-        # 1. Run Step 27 batch prediction to obtain predictions and probabilities
+        # Run batch prediction to obtain predictions and probabilities
         pred_batch = self.classifier.predict_batch(feature_vectors)
 
         # 2. Extract original and imputed matrices
@@ -220,12 +220,29 @@ class SHAPExplainerService:
                 f"Top contributing feature: {top_5[0].feature_name}."
             )
 
+            features_list = [
+                {
+                    "feature": c.feature_name,
+                    "value": c.original_value,
+                    "shap_value": c.shap_value,
+                    "direction": c.direction.value if hasattr(c.direction, "value") else str(c.direction),
+                    "impact": c.direction.value if hasattr(c.direction, "value") else str(c.direction),
+                }
+                for c in sorted(contributions, key=lambda item: (-item.absolute_shap_value, item.feature_index))
+            ]
+
             results.append(
                 SHAPExplanationResult(
+                    available=True,
                     stream_id=stream_ids[i],
+                    base_value=base_val,
+                    prediction=pred_class,
                     predicted_class=pred_class,
                     predicted_class_id=class_id,
-                    class_probabilities=pred_item.class_probabilities,
+                    target_class=pred_class,
+                    target_class_id=class_id,
+                    class_probabilities=pred_item.class_probabilities or {},
+                    features=features_list,
                     feature_contributions=contributions,
                     top_contributions=top_5,
                     feature_count=EXPECTED_FEATURE_COUNT,

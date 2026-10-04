@@ -1,5 +1,5 @@
 """
-Pydantic schemas for Step 23 - Threat Mapping & Evidence Correlation.
+Pydantic schemas for Threat Mapping & Evidence Correlation.
 
 Maintains strict semantic separation between:
 WEAKNESS != VULNERABILITY != THREAT RELEVANCE != ATT&CK TECHNIQUE EXECUTION != CONFIRMED ATTACK

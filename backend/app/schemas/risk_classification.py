@@ -25,41 +25,69 @@ class RiskClassificationMetadata(BaseModel):
 
 class RiskClassificationResult(BaseModel):
     """
-    Step 27: Result of supervised XGBoost configuration risk classification.
+    Result of supervised XGBoost configuration risk classification.
     
     IMPORTANT:
     The predicted risk category reflects the statistical risk profile learned
     from training labels. It does NOT denote a confirmed attack, active intrusion,
     system compromise, or real-world exploitation.
     """
+    available: bool = Field(
+        default=True,
+        description="Whether risk classification model was available and evaluated"
+    )
     stream_id: Optional[str] = Field(default=None, description="Identifier of the evaluated session/stream")
-    predicted_class: str = Field(
-        ...,
-        description="Predicted risk classification: LOW, MEDIUM, HIGH, or CRITICAL",
+    prediction: Optional[str] = Field(
+        default=None,
+        description="Canonical predicted risk category: LOW, MEDIUM, HIGH, or CRITICAL",
     )
-    class_id: int = Field(
-        ...,
-        description="Integer class index corresponding to the explicit label mapping (0 to 3)",
+    predicted_class: Optional[str] = Field(
+        default=None,
+        description="Predicted risk classification alias for backward compatibility",
     )
-    class_probabilities: Dict[str, float] = Field(
-        ...,
-        description="Estimated probability distribution across LOW, MEDIUM, HIGH, and CRITICAL. Not a certainty measure.",
+    class_name: Optional[str] = Field(
+        default=None,
+        description="Canonical class name matching prediction",
+    )
+    class_id: Optional[int] = Field(
+        default=None,
+        description="Integer class index corresponding to explicit label mapping (0 to 3), or None if unavailable",
+    )
+    confidence: Optional[float] = Field(
+        default=None,
+        description="Predicted class continuous probability (0.0 to 1.0)",
+    )
+    class_probabilities: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Estimated probability distribution across LOW, MEDIUM, HIGH, and CRITICAL. None if unavailable.",
+    )
+    probabilities: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Alias for class_probabilities for direct client consumption",
+    )
+    classes: List[str] = Field(
+        default_factory=lambda: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        description="Canonical class list ordered by class ID (0 to 3)",
     )
     feature_count: int = Field(
         default=19,
         description="Total feature dimensions verified for this classification",
     )
     status_text: str = Field(
-        ...,
+        default="Risk classification evaluated.",
         description="Neutral, non-accusatory summary of the predicted configuration risk category",
     )
-    model_metadata: RiskClassificationMetadata = Field(
+    model_metadata: Optional[RiskClassificationMetadata] = Field(
         default_factory=RiskClassificationMetadata,
         description="Configuration and label encoding metadata of the classifier",
     )
     feature_vector: Optional[List[float]] = Field(
         default=None,
         description="Exact 19-dimensional feature vector evaluated for auditability and traceability",
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Machine-readable reason why risk classification is unavailable",
     )
 
 

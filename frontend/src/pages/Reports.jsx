@@ -1,607 +1,770 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileText,
   Download,
+  Shield,
   ShieldAlert,
-  RefreshCw,
   ShieldCheck,
-  Network,
-  Mail,
-  LockKeyhole,
+  CheckCircle2,
   AlertTriangle,
+  LockKeyhole,
+  Network,
+  Cpu,
+  Layers,
+  Dna,
+  Bug,
+  Brain,
+  Printer,
+  ChevronRight,
+  ExternalLink,
+  FileJson,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { useAnalysis } from '../hooks/useAnalysis';
+import PageHeader from '../components/PageHeader';
+import EmptyAnalysisState from '../components/EmptyAnalysisState';
+import { downloadAnalysisPdf, downloadAnalysisJson } from '../services/api';
+import { getSeverityBadge, getStatusBadge, getScoreColor } from '../utils/severity';
+import { formatBytes, formatUtcTimestamp, safeVal, exportToCsv } from '../utils/formatters';
 import {
-  getActiveAnalysisId,
-  getAnalysisReport,
-  exportReportPDFUrl,
-} from '../services/api';
+  getPostureScore,
+  hasEmailProtocol,
+  isReportApplicable,
+  getApplicabilityReason,
+} from '../utils/reportModel';
 
-const EMAIL_PROTOCOLS = new Set([
-  'SMTP',
-  'SMTPS',
-  'IMAP',
-  'IMAPS',
-  'POP3',
-  'POP3S',
-]);
-
-function normalizeProtocol(value) {
-  return String(value ?? '')
-    .trim()
-    .toUpperCase();
-}
-
-function isFiniteNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value);
-}
+const TABS = [
+  { id: 'summary', label: 'Executive Summary', icon: Shield },
+  { id: 'session', label: 'Session & Scope', icon: Network },
+  { id: 'protocol', label: 'Protocol & TLS', icon: LockKeyhole },
+  { id: 'posture', label: 'Posture & Deductions', icon: ShieldCheck },
+  { id: 'findings', label: 'Compliance Findings', icon: AlertTriangle },
+  { id: 'weaknesses', label: 'Vulnerabilities', icon: Bug },
+  { id: 'threats', label: 'Threat Context', icon: Dna },
+  { id: 'ml', label: 'ML & Anomaly', icon: Brain },
+  { id: 'methodology', label: 'Methodology', icon: FileText },
+];
 
 export default function Reports() {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { report, loading, error, reload, analysisId } = useAnalysis();
+  const [activeTab, setActiveTab] = useState('summary');
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingJson, setDownloadingJson] = useState(false);
+  const [exportNotification, setExportNotification] = useState(null);
 
-  const resolveCurrentId = () => {
-    return (
-      getActiveAnalysisId() ||
-      localStorage.getItem('active_analysis_id') ||
-      localStorage.getItem('analysis_id') ||
-      null
-    );
+  const isApplicable = isReportApplicable(report);
+  const applicabilityReason =
+    getApplicabilityReason(report) ||
+    'No supported email protocol/security assessment was observed in this capture.';
+
+  const session = report?.session;
+  const protocol = report?.protocol_summary;
+  const posture = report?.posture_report;
+  const findings = report?.compliance_findings || [];
+  const weaknesses = report?.vulnerability_mappings || [];
+  const threats = report?.threat_mappings || [];
+  const anomaly = report?.anomaly_detection;
+  const risk = report?.risk_classification;
+
+  const score = getPostureScore(report);
+  const scoreColors = getScoreColor(score ?? 0);
+  const isEmail = isApplicable;
+
+  // 1. Download PDF (via backend GET /analysis/{id}/report/pdf)
+  const handleDownloadPdf = async () => {
+    if (!analysisId) return;
+    try {
+      setDownloadingPdf(true);
+      await downloadAnalysisPdf(analysisId);
+      setExportNotification('Formal Executive Audit PDF generated and downloaded successfully.');
+    } catch (err) {
+      console.error('PDF download error:', err);
+      setExportNotification('Failed to generate PDF report. Check backend connectivity.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
-  const [analysisId, setAnalysisId] = useState(resolveCurrentId());
+  // 2. Download JSON (via backend GET /analysis/{id}/report)
+  const handleDownloadJson = async () => {
+    if (!analysisId) return;
+    try {
+      setDownloadingJson(true);
+      await downloadAnalysisJson(analysisId);
+      setExportNotification('Complete machine-readable JSON report downloaded successfully.');
+    } catch (err) {
+      console.error('JSON download error:', err);
+      setExportNotification('Failed to download JSON report.');
+    } finally {
+      setDownloadingJson(false);
+    }
+  };
 
-  useEffect(() => {
-    const handleIdChange = () => {
-      setAnalysisId(resolveCurrentId());
-    };
+  // 3. Export Findings CSV (RFC 4180 client-side download)
+  const handleExportFindingsCsv = () => {
+    if (!report?.compliance_findings || report.compliance_findings.length === 0) {
+      setExportNotification('No compliance findings available to export.');
+      return;
+    }
+    const rows = report.compliance_findings.map((f) => ({
+      finding_id: f.finding_id,
+      rule_id: f.rule_id,
+      title: f.title,
+      category: f.category,
+      severity: f.severity,
+      status: f.status,
+      stream_id: f.evidence?.stream_id || '',
+      packet_number: f.evidence?.packet_number ?? '',
+      timestamp: f.evidence?.timestamp ?? '',
+      observed_property: f.evidence?.observed_property || '',
+      observed_value: String(f.evidence?.observed_value ?? ''),
+      reference_value: String(f.evidence?.reference_value ?? ''),
+      recommendation: f.recommendation || '',
+    }));
 
-    window.addEventListener('analysisIdChanged', handleIdChange);
-    window.addEventListener('storage', handleIdChange);
+    exportToCsv(rows, `mailrakhwala-findings-${analysisId.slice(0, 8)}.csv`);
+    setExportNotification('Compliance Findings CSV exported successfully.');
+  };
 
-    return () => {
-      window.removeEventListener('analysisIdChanged', handleIdChange);
-      window.removeEventListener('storage', handleIdChange);
-    };
-  }, []);
+  // 4. Export Forensic Evidence CSV (from findings & deductions)
+  const handleExportEvidenceCsv = () => {
+    if (!report) return;
+    const evidenceList = [];
 
-  useEffect(() => {
-    const currentId = resolveCurrentId();
+    // Findings evidence
+    (report.compliance_findings || []).forEach((f) => {
+      if (f.evidence) {
+        evidenceList.push({
+          source_type: 'Compliance Finding',
+          source_id: f.finding_id,
+          rule_id: f.rule_id,
+          stream_id: f.evidence.stream_id || '',
+          packet_number: f.evidence.packet_number ?? '',
+          timestamp: f.evidence.timestamp ?? '',
+          observed_property: f.evidence.observed_property || '',
+          observed_value: String(f.evidence.observed_value ?? ''),
+          reference_value: String(f.evidence.reference_value ?? ''),
+          source_component: f.evidence.source_component || 'ComplianceEngine',
+        });
+      }
+    });
 
-    if (!currentId) {
-      setReport(null);
-      setError(null);
-      setLoading(false);
+    // Posture deductions evidence
+    (report.posture_report?.deductions || []).forEach((d) => {
+      evidenceList.push({
+        source_type: 'Posture Deduction',
+        source_id: d.finding_id || d.rule_id,
+        rule_id: d.upstream_rule_id || d.rule_id,
+        stream_id: d.stream_id || '',
+        packet_number: '',
+        timestamp: '',
+        observed_property: d.observed_property || '',
+        observed_value: String(d.observed_value ?? ''),
+        reference_value: '',
+        source_component: 'CryptographicPostureEngine',
+      });
+    });
+
+    if (evidenceList.length === 0) {
+      setExportNotification('No evidence records found in this capture.');
       return;
     }
 
-    let cancelled = false;
-
-    setLoading(true);
-    setError(null);
-
-    getAnalysisReport(currentId)
-      .then((data) => {
-        if (cancelled) return;
-        setReport(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-
-        console.error('Failed to load forensic report:', err);
-
-        setReport(null);
-        setError(
-          err?.response?.data?.detail ||
-            'Report could not be retrieved.'
-        );
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [analysisId]);
-
-  const effectiveId = analysisId || resolveCurrentId();
-
-  const reportMeta = useMemo(() => {
-    const totalStreams = Number(report?.session?.total_streams ?? 0);
-
-    const detectedProtocol = normalizeProtocol(
-      report?.protocol_summary?.detected_protocol
-    );
-
-    /*
-     * MailRakhwala's cryptographic assessment is applicable only
-     * when the capture actually contains identifiable email traffic.
-     *
-     * A TCP stream by itself is NOT evidence of an email session.
-     */
-    const hasEmailSignals =
-      totalStreams > 0 &&
-      EMAIL_PROTOCOLS.has(detectedProtocol);
-
-    const findings = Array.isArray(report?.compliance_findings)
-      ? report.compliance_findings
-      : [];
-
-    const rawScore = report?.posture_report?.posture_score;
-
-    const validScore =
-      isFiniteNumber(rawScore) &&
-      rawScore >= 0 &&
-      rawScore <= 100;
-
-    const postureScore =
-      hasEmailSignals && validScore
-        ? rawScore
-        : null;
-
-    const riskClass =
-      hasEmailSignals
-        ? (
-            report?.risk_classification?.predicted_risk_class ||
-            report?.risk_classification?.risk_class ||
-            null
-          )
-        : null;
-
-    const anomaly =
-      hasEmailSignals &&
-      typeof report?.anomaly_detection?.is_anomaly === 'boolean'
-        ? report.anomaly_detection.is_anomaly
-        : null;
-
-    /*
-     * For an out-of-scope capture, the report must not present
-     * compliance findings as an assessed email-security result.
-     */
-    const assessedFindings = hasEmailSignals
-      ? findings
-      : [];
-
-    return {
-      totalStreams,
-      detectedProtocol,
-      hasEmailSignals,
-      postureScore,
-      riskClass,
-      anomaly,
-      findings: assessedFindings,
-      rawFindingCount: findings.length,
-    };
-  }, [report]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-8">
-        <div className="flex items-center gap-3 text-slate-500">
-          <RefreshCw className="w-5 h-5 animate-spin text-[#0B5ED7]" />
-          <span className="text-sm font-medium">
-            Compiling forensic audit package...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!effectiveId) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-8">
-        <div className="w-full max-w-lg rounded-3xl border border-blue-100 bg-white p-10 text-center shadow-[0_18px_55px_rgba(15,76,160,0.08)]">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
-            <ShieldAlert className="w-7 h-7" />
-          </div>
-
-          <h3 className="mt-5 text-xl font-black text-slate-900">
-            No Forensic Report Generated
-          </h3>
-
-          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-            Please upload and analyze a PCAP file in Capture Ingestion
-            to generate an executive and forensic security report.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-8">
-        <div className="w-full max-w-lg rounded-3xl border border-red-100 bg-white p-10 text-center shadow-xl shadow-red-100/30">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
-            <ShieldAlert className="w-7 h-7" />
-          </div>
-
-          <h3 className="mt-5 text-xl font-black text-slate-900">
-            Audit Report Unavailable
-          </h3>
-
-          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-            {error}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const {
-    totalStreams,
-    detectedProtocol,
-    hasEmailSignals,
-    postureScore,
-    riskClass,
-    anomaly,
-    findings,
-  } = reportMeta;
-
-  const handleDownloadJSON = () => {
-    const blob = new Blob(
-      [JSON.stringify(report, null, 2)],
-      { type: 'application/json' }
-    );
-
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-
-    anchor.href = url;
-    anchor.download = `mailrakhwala_audit_${effectiveId}.json`;
-
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-
-    URL.revokeObjectURL(url);
+    exportToCsv(evidenceList, `mailrakhwala-evidence-${analysisId.slice(0, 8)}.csv`);
+    setExportNotification('Forensic Evidence Telemetry CSV exported successfully.');
   };
 
-  const scoreLabel =
-    postureScore === null
-      ? 'Not Assessed'
-      : `${postureScore} / 100`;
+  // 5. Export Posture Deductions CSV
+  const handleExportDeductionsCsv = () => {
+    if (!report?.posture_report?.deductions || report.posture_report.deductions.length === 0) {
+      setExportNotification('No posture deductions applied to this session.');
+      return;
+    }
+    const rows = report.posture_report.deductions.map((d) => ({
+      rule_id: d.rule_id,
+      title: d.title,
+      penalty: d.penalty,
+      upstream_rule_id: d.upstream_rule_id,
+      finding_id: d.finding_id,
+      observed_property: d.observed_property,
+      observed_value: String(d.observed_value ?? ''),
+      stream_id: d.stream_id || '',
+      description: d.description,
+    }));
 
-  const protocolLabel =
-    detectedProtocol &&
-    detectedProtocol !== 'UNKNOWN' &&
-    detectedProtocol !== 'NONE'
-      ? detectedProtocol
-      : 'No email protocol detected';
+    exportToCsv(rows, `mailrakhwala-deductions-${analysisId.slice(0, 8)}.csv`);
+    setExportNotification('Posture Deductions CSV exported successfully.');
+  };
 
-  const assessmentDescription = hasEmailSignals
-    ? 'Email traffic was identified and the cryptographic security pipeline was applicable to this capture.'
-    : 'No identifiable SMTP, SMTPS, IMAP, IMAPS, POP3, or POP3S traffic was detected. Cryptographic email security was therefore not assessed.';
+  if (!analysisId) {
+    return <EmptyAnalysisState title="Forensic Reports" />;
+  }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f8fbff] text-slate-900">
-      <div className="relative overflow-hidden">
-        {/* Atmospheric background */}
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 right-0 h-96 w-96 rounded-full bg-blue-100/50 blur-3xl" />
-          <div className="absolute top-80 -left-32 h-80 w-80 rounded-full bg-cyan-100/35 blur-3xl" />
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
+      <PageHeader
+        category="REPORTING"
+        title="Forensic Reports"
+        description="Audit-ready cryptographic inspection reports and evidence export center supporting PDF, JSON, and CSV exports alongside interactive forensic sections."
+        onRefresh={reload}
+        isRefreshing={loading}
+      />
+
+      {!isApplicable && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs text-amber-900 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-sm block mb-0.5">Assessment Not Applicable: Non-Email Capture</span>
+            {applicabilityReason} The forensic audit records this capture as not applicable for email security assessment. No email RFC compliance findings or security posture score were evaluated.
+          </div>
         </div>
+      )}
 
-        <div className="relative mx-auto max-w-7xl px-6 py-8 lg:px-10">
-          {/* Header */}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#0B5ED7]">
-                <FileText className="h-3.5 w-3.5" />
-                Forensic Report
+      {/* Export Notification Banner */}
+      {exportNotification && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 flex items-center justify-between text-xs text-blue-900 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+            <span className="font-medium">{exportNotification}</span>
+          </div>
+          <button
+            onClick={() => setExportNotification(null)}
+            className="text-blue-700 font-bold hover:underline shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {loading && !report ? (
+        <div className="flex h-64 items-center justify-center rounded-2xl border border-blue-100 bg-white/70 shadow-sm">
+          <div className="flex items-center gap-3 text-slate-500">
+            <FileText className="h-6 w-6 animate-spin text-blue-600" />
+            <span className="text-sm font-medium">Compiling forensic report and export records...</span>
+          </div>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 text-red-700">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+            <span className="font-semibold">Failed to load report</span>
+          </div>
+          <p className="mt-2 text-sm text-red-600">{error}</p>
+        </div>
+      ) : (
+        <>
+          {/* Consolidated Export Action Center */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Forensic Export Center
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Download executive reports and forensic data in PDF, raw JSON, and tabular CSV formats.
+                </p>
               </div>
-
-              <h1 className="text-3xl font-black tracking-tight text-slate-950">
-                Forensic Reports
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                Audit exports and machine-readable evidence packages for
-                this analysis session.
-              </p>
-
-              <p className="mt-2 font-mono text-xs text-[#0B5ED7]">
-                Session: {effectiveId}
-              </p>
+              <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-semibold">
+                5 Export Formats
+              </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
+              {/* 1. PDF */}
               <button
-                type="button"
-                onClick={handleDownloadJSON}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf || !report}
+                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-rose-50/50 hover:border-rose-200 transition-all text-left disabled:opacity-50 group"
               >
-                <Download className="h-4 w-4" />
-                Export JSON
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700 mb-2 group-hover:scale-105 transition-transform">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-900">Executive PDF</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  {downloadingPdf ? 'Generating...' : 'ReportLab Audit PDF'}
+                </span>
               </button>
 
-              <a
-                href={exportReportPDFUrl(effectiveId)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-[0_8px_24px_rgba(11,94,215,0.20)] transition hover:bg-[#084FB8]"
+              {/* 2. JSON */}
+              <button
+                onClick={handleDownloadJson}
+                disabled={downloadingJson || !report}
+                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-blue-50/50 hover:border-blue-200 transition-all text-left disabled:opacity-50 group"
               >
-                <FileText className="h-4 w-4" />
-                Download PDF Report
-              </a>
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700 mb-2 group-hover:scale-105 transition-transform">
+                  <FileJson className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-900">Complete JSON</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  {downloadingJson ? 'Downloading...' : 'Raw Backend Report'}
+                </span>
+              </button>
+
+              {/* 3. Findings CSV */}
+              <button
+                onClick={handleExportFindingsCsv}
+                disabled={!report}
+                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-emerald-50/50 hover:border-emerald-200 transition-all text-left disabled:opacity-50 group"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 mb-2 group-hover:scale-105 transition-transform">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-900">Findings CSV</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  {findings.length} Compliance Records
+                </span>
+              </button>
+
+              {/* 4. Evidence CSV */}
+              <button
+                onClick={handleExportEvidenceCsv}
+                disabled={!report}
+                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-purple-50/50 hover:border-purple-200 transition-all text-left disabled:opacity-50 group"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-700 mb-2 group-hover:scale-105 transition-transform">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-900">Evidence CSV</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  Observed Telemetry
+                </span>
+              </button>
+
+              {/* 5. Deductions CSV */}
+              <button
+                onClick={handleExportDeductionsCsv}
+                disabled={!report}
+                className="flex flex-col items-start p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-amber-50/50 hover:border-amber-200 transition-all text-left disabled:opacity-50 group"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 mb-2 group-hover:scale-105 transition-transform">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-slate-900">Deductions CSV</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  -{posture?.total_penalty ?? 0} Penalty Points
+                </span>
+              </button>
             </div>
           </div>
 
-          {/* Assessment state */}
-          <div
-            className={`mt-8 overflow-hidden rounded-3xl border ${
-              hasEmailSignals
-                ? 'border-emerald-100 bg-emerald-50/50'
-                : 'border-blue-100 bg-blue-50/50'
-            }`}
-          >
-            <div className="p-6 lg:p-7">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex gap-4">
-                  <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
-                      hasEmailSignals
-                        ? 'bg-emerald-100 text-emerald-600'
-                        : 'bg-blue-100 text-[#0B5ED7]'
-                    }`}
-                  >
-                    {hasEmailSignals ? (
-                      <ShieldCheck className="h-6 w-6" />
-                    ) : (
-                      <ShieldAlert className="h-6 w-6" />
-                    )}
+          {/* Section Navigation Tabs */}
+          <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto pb-1 text-xs">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              if (tab.id === 'weaknesses' && weaknesses.length === 0) return null;
+              if (tab.id === 'threats' && threats.length === 0) return null;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-lg font-semibold border-b-2 transition-all shrink-0 ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600 bg-blue-50/40'
+                      : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* TAB 1: EXECUTIVE SUMMARY */}
+          {activeTab === 'summary' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  <div className="space-y-2">
+                    <span className="text-xs uppercase font-extrabold tracking-wider text-slate-400">
+                      Cryptographic Posture Assessment
+                    </span>
+                    <h2 className="text-2xl font-black text-slate-900">
+                      Executive Security Verdict
+                    </h2>
+                    <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
+                      This formal audit provides an evidence-based cryptographic evaluation of network
+                      traffic observed in session <span className="font-mono font-semibold text-slate-800">{safeVal(session?.session_id, 'N/A')}</span>.
+                      Scoring is calculated strictly from passive protocol evidence and RFC compliance baselines.
+                    </p>
                   </div>
 
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">
-                      {hasEmailSignals
-                        ? 'Email Security Assessment'
-                        : 'Email Security Not Assessed'}
-                    </h2>
+                  <div className="flex items-center gap-6 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-8">
+                    <div>
+                      <span className="text-xs uppercase font-bold text-slate-400 block">
+                        Posture Score
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className={`text-5xl font-black tracking-tight ${isApplicable && score !== null ? scoreColors.text : 'text-slate-400'}`}>
+                          {isApplicable && score !== null ? score : 'N/A'}
+                        </span>
+                        <span className="text-lg font-bold text-slate-400">/ 100</span>
+                      </div>
+                    </div>
 
-                    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                      {assessmentDescription}
+                    <div className="space-y-1">
+                      <span className="text-xs uppercase font-bold text-slate-400 block">
+                        Risk Rating
+                      </span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+                          isApplicable
+                            ? getSeverityBadge(posture?.severity).badge
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {isApplicable ? (posture?.severity || 'UNKNOWN') : 'NOT APPLICABLE'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metric Summary Grid */}
+                <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-100 text-xs">
+                  <div>
+                    <span className="text-slate-400 block">Identified Protocol</span>
+                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                      {safeVal(protocol?.detected_protocol, 'Unknown')}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">TLS Evidence</span>
+                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                      {protocol?.has_tls ? 'Observed / Present' : 'None Detected'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Evaluated Rules</span>
+                    <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                      {findings.length} Compliance Checks
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Score Deductions</span>
+                    <span className="font-bold text-rose-600 text-sm mt-0.5 block">
+                      -{posture?.total_penalty ?? 0} Penalty Points
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actionable Recommendations Summary */}
+              {report?.recommendations && report.recommendations.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <h3 className="text-base font-bold text-slate-900">
+                    High Priority Remediation Recommendations
+                  </h3>
+                  <div className="divide-y divide-slate-100">
+                    {report.recommendations.map((rec, idx) => (
+                      <div key={idx} className="py-3 flex items-start gap-3">
+                        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded shrink-0">
+                          {rec.rule_id}
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900">{rec.title}</h4>
+                          <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                            {rec.recommendation}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: SESSION & SCOPE */}
+          {activeTab === 'session' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+              <h3 className="text-base font-bold text-slate-900">Session Execution Parameters</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-slate-400 block">Unique Session ID</span>
+                    <span className="font-mono font-bold text-slate-800 break-all">{safeVal(session?.session_id, 'N/A')}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Evaluated Capture File</span>
+                    <span className="font-medium text-slate-800">{safeVal(session?.filename, 'N/A')}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">File Size</span>
+                    <span className="font-medium text-slate-800">{formatBytes(session?.filesize_bytes)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-slate-400 block">Execution Timestamp</span>
+                    <span className="font-medium text-slate-800">{formatUtcTimestamp(session?.created_at)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Capture Execution Status</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold">
+                      {safeVal(session?.status, 'COMPLETED')}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Total TCP Streams Evaluated</span>
+                    <span className="font-bold text-slate-900">{session?.total_streams ?? 1}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: PROTOCOL & TLS */}
+          {activeTab === 'protocol' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+              <h3 className="text-base font-bold text-slate-900">Protocol & Cryptographic Parameters</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Protocol</span>
+                  <span className="font-bold text-slate-800 text-sm mt-0.5 block">{safeVal(protocol?.detected_protocol, 'Unknown')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">TLS Version</span>
+                  <span className="font-bold text-slate-800 text-sm mt-0.5 block">{safeVal(protocol?.tls_version, 'Unavailable')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Cipher Suite</span>
+                  <span className="font-mono text-slate-800 font-bold text-xs mt-0.5 block truncate">{safeVal(protocol?.cipher_suite, 'Unavailable')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Key Exchange</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{safeVal(protocol?.key_exchange, 'Unavailable')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Forward Secrecy (PFS)</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">{protocol?.perfect_forward_secrecy ? 'Enabled' : 'Disabled'}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">STARTTLS Status</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{safeVal(protocol?.starttls_status, 'Unavailable')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Certificate Validity</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{safeVal(protocol?.certificate_validity, 'Unavailable')}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Key Size</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{protocol?.certificate_key_size ? `${protocol.certificate_key_size} bits` : 'Unavailable'}</span>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <span className="text-slate-400 block text-[11px]">Trust Validation</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{safeVal(protocol?.trust_validation, 'Unavailable')}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: POSTURE & DEDUCTIONS */}
+          {activeTab === 'posture' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Score Deduction Waterfall</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Transparent accounting of all points deducted from the 100-point baseline score
+                  </p>
+                </div>
+                <span className="font-mono text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded">
+                  Total Penalty: -{posture?.total_penalty ?? 0} pts
+                </span>
+              </div>
+
+              {posture?.deductions && posture.deductions.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
+                      <tr>
+                        <th className="py-2.5 px-4">Rule</th>
+                        <th className="py-2.5 px-4">Title</th>
+                        <th className="py-2.5 px-4">Observed Property</th>
+                        <th className="py-2.5 px-4">Observed Value</th>
+                        <th className="py-2.5 px-4 text-right">Penalty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {posture.deductions.map((d, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-4 font-mono font-bold text-blue-700">{d.rule_id}</td>
+                          <td className="py-2.5 px-4 font-medium text-slate-900">{d.title}</td>
+                          <td className="py-2.5 px-4 font-mono text-slate-600">{d.observed_property}</td>
+                          <td className="py-2.5 px-4 font-mono font-bold text-rose-700">{String(d.observed_value)}</td>
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{d.penalty} pts</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Zero deductions applied. Conformance is optimal.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: COMPLIANCE FINDINGS */}
+          {activeTab === 'findings' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-900">
+                Compliance Findings Catalog ({findings.length})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
+                    <tr>
+                      <th className="py-2.5 px-4">Rule ID</th>
+                      <th className="py-2.5 px-4">Title</th>
+                      <th className="py-2.5 px-4">Category</th>
+                      <th className="py-2.5 px-4">Severity</th>
+                      <th className="py-2.5 px-4">Status</th>
+                      <th className="py-2.5 px-4">Observed Telemetry</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {findings.map((f, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="py-2.5 px-4 font-mono font-bold text-blue-700">{f.rule_id}</td>
+                        <td className="py-2.5 px-4 font-medium text-slate-900">{f.title}</td>
+                        <td className="py-2.5 px-4 text-slate-500">{safeVal(f.category, 'General').replace(/_/g, ' ')}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${getSeverityBadge(f.severity).badge}`}>
+                            {f.severity}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${getStatusBadge(f.status).badge}`}>
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-slate-700">
+                          {f.evidence ? `${f.evidence.observed_property}: ${String(f.evidence.observed_value)}` : 'None'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: VULNERABILITIES */}
+          {activeTab === 'weaknesses' && weaknesses.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-900">
+                Cryptographic Weaknesses & Vulnerabilities ({weaknesses.length})
+              </h3>
+              <div className="space-y-3">
+                {weaknesses.map((w) => (
+                  <div key={w.mapping_id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                        {w.identifier}
+                      </span>
+                      {w.vulnerability_id && (
+                        <span className="font-mono font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                          {w.vulnerability_id}
+                        </span>
+                      )}
+                      <h4 className="font-bold text-slate-900">{w.title}</h4>
+                    </div>
+                    <p className="text-slate-600 mt-1 leading-relaxed">{w.description}</p>
+                    <div className="pt-2 flex items-center gap-3 text-slate-400 text-[11px]">
+                      <span>Source Rule: <strong className="text-slate-700 font-mono">{w.source_rule_id}</strong></span>
+                      <span>Confidence: <strong className="text-slate-700">{w.confidence}</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 7: THREAT CONTEXT */}
+          {activeTab === 'threats' && threats.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-900">
+                Threat Context Mappings ({threats.length})
+              </h3>
+              <div className="space-y-3">
+                {threats.map((t) => (
+                  <div key={t.threat_mapping_id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1 text-xs">
+                    <div className="flex items-center gap-2">
+                      {t.mitre_attack?.technique_id && (
+                        <span className="font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded">
+                          ATT&CK {t.mitre_attack.technique_id}
+                        </span>
+                      )}
+                      <h4 className="font-bold text-slate-900">{t.title}</h4>
+                    </div>
+                    <p className="text-slate-600 mt-1 leading-relaxed">{t.description}</p>
+                    <div className="pt-2 text-slate-400 text-[11px]">
+                      Upstream Finding: <strong className="text-slate-700 font-mono">{t.upstream_finding_id}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: ML & ANOMALY */}
+          {activeTab === 'ml' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <h3 className="text-base font-bold text-slate-900">Machine Learning Diagnostics</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                    <span className="text-slate-400 block text-[11px]">Isolation Forest Anomaly</span>
+                    <div className="mt-1 font-bold text-sm text-slate-900">
+                      {anomaly ? (anomaly.is_anomalous ? 'Statistical Outlier (-1)' : 'Normal Pattern (+1)') : 'Model Not Fitted'}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {anomaly?.status_text || 'Unsupervised outlier detection was not active for this run.'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                    <span className="text-slate-400 block text-[11px]">XGBoost Risk Classification</span>
+                    <div className="mt-1 font-bold text-sm text-slate-900">
+                      {risk?.predicted_class ? `${risk.predicted_class} Predicted` : 'Model Not Fitted'}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {risk?.status_text || 'Supervised risk classification was not evaluated for this capture.'}
                     </p>
                   </div>
                 </div>
-
-                <div
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-black uppercase tracking-wider ${
-                    hasEmailSignals
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-blue-100 text-[#0B5ED7]'
-                  }`}
-                >
-                  {hasEmailSignals ? 'ASSESSED' : 'NOT ASSESSED'}
-                </div>
               </div>
             </div>
-          </div>
-
-          {/* Executive Summary */}
-          <section className="mt-8">
-            <div className="mb-4">
-              <h2 className="text-lg font-black text-slate-900">
-                Executive Summary
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Evidence-backed summary of the captured session.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {/* Filename */}
-              <SummaryCard
-                icon={<FileText className="h-5 w-5" />}
-                label="Target Filename"
-                value={report?.session?.filename || 'N/A'}
-              />
-
-              {/* Status */}
-              <SummaryCard
-                icon={<ShieldCheck className="h-5 w-5" />}
-                label="Analysis Status"
-                value={report?.session?.status || 'UNKNOWN'}
-                valueClass="text-emerald-600"
-              />
-
-              {/* Streams */}
-              <SummaryCard
-                icon={<Network className="h-5 w-5" />}
-                label="Reassembled Streams"
-                value={String(totalStreams)}
-              />
-
-              {/* Protocol */}
-              <SummaryCard
-                icon={<Mail className="h-5 w-5" />}
-                label="Detected Email Protocol"
-                value={protocolLabel}
-                valueClass={
-                  hasEmailSignals
-                    ? 'text-[#0B5ED7]'
-                    : 'text-slate-500'
-                }
-              />
-
-              {/* Score */}
-              <SummaryCard
-                icon={<ShieldCheck className="h-5 w-5" />}
-                label="Cryptographic Posture Score"
-                value={scoreLabel}
-                valueClass={
-                  postureScore === null
-                    ? 'text-slate-500'
-                    : 'text-emerald-600'
-                }
-              />
-
-              {/* Risk */}
-              <SummaryCard
-                icon={<AlertTriangle className="h-5 w-5" />}
-                label="Risk Classification"
-                value={riskClass || 'Not Assessed'}
-                valueClass={
-                  riskClass
-                    ? 'text-slate-900'
-                    : 'text-slate-500'
-                }
-              />
-            </div>
-          </section>
-
-          {/* Technical scope */}
-          <section className="mt-8">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <InfoCard
-                icon={<LockKeyhole className="h-5 w-5" />}
-                title="TLS Evidence"
-                value={
-                  hasEmailSignals
-                    ? (
-                        report?.protocol_summary?.has_tls
-                          ? 'TLS evidence present'
-                          : 'No TLS evidence observed'
-                      )
-                    : 'Not Assessed'
-                }
-              />
-
-              <InfoCard
-                icon={<ShieldCheck className="h-5 w-5" />}
-                title="Verified Findings"
-                value={
-                  hasEmailSignals
-                    ? String(findings.length)
-                    : '0 — Not Assessed'
-                }
-              />
-
-              <InfoCard
-                icon={<AlertTriangle className="h-5 w-5" />}
-                title="Anomaly Detection"
-                value={
-                  anomaly === null
-                    ? 'Not Assessed'
-                    : anomaly
-                      ? 'Anomaly detected'
-                      : 'No anomaly detected'
-                }
-              />
-            </div>
-          </section>
-
-          {/* No email signals explanation */}
-          {!hasEmailSignals && (
-            <section className="mt-8 rounded-3xl border border-blue-100 bg-blue-50/45 p-6 lg:p-7">
-              <div className="flex gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0B5ED7] shadow-sm">
-                  <Network className="h-5 w-5" />
-                </div>
-
-                <div>
-                  <h3 className="text-base font-black text-slate-900">
-                    No Email or TLS Signals Detected
-                  </h3>
-
-                  <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
-                    This capture contains network traffic, but the available
-                    evidence does not identify an SMTP, SMTPS, IMAP, IMAPS,
-                    POP3, or POP3S session. A TCP stream count alone does not
-                    establish an email-security assessment.
-                  </p>
-
-                  <p className="mt-3 text-xs font-semibold text-slate-500">
-                    Posture score, cryptographic findings, ML risk
-                    classification, and anomaly assessment are therefore
-                    shown as <span className="font-black text-[#0B5ED7]">
-                      Not Assessed
-                    </span> rather than being inferred from unrelated traffic.
-                  </p>
-                </div>
-              </div>
-            </section>
           )}
 
-          {/* Methodology */}
-          <section className="mt-8 rounded-[24px] border border-blue-100/90 bg-white/90 p-6 shadow-[0_14px_45px_rgba(15,76,160,0.07)] backdrop-blur-xl">
-            <h3 className="text-sm font-black uppercase tracking-wider text-[#0B5ED7]">
-              Assessment Basis
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              MailRakhwala reports cryptographic security results only when
-              applicable email traffic is identified in the captured
-              evidence. Unavailable or non-applicable measurements are not
-              converted into security scores or findings.
-            </p>
-
-            {report?.methodology_disclaimer && (
-              <p className="mt-3 border-t border-blue-100 pt-3 text-xs leading-5 text-slate-400">
-                {report.methodology_disclaimer}
+          {/* TAB 9: METHODOLOGY */}
+          {activeTab === 'methodology' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4 text-xs leading-relaxed text-slate-600">
+              <h3 className="text-base font-bold text-slate-900">Authoritative Audit Methodology</h3>
+              <p>
+                {report?.methodology_disclaimer || (
+                  "Cryptographic Security Scores and Compliance Findings are derived deterministically from RFC compliance policies and PKI specifications. ML Risk Classifications reflect XGBoost model probabilities and do not represent empirical attack frequencies. Anomaly Detection flags statistical outliers relative to reference distributions. SHAP attributions indicate mathematical feature contributions toward model prediction."
+                )}
               </p>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  icon,
-  label,
-  value,
-  valueClass = 'text-slate-900',
-}) {
-  return (
-    <div className="rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
-          {icon}
-        </div>
-
-        <div className="min-w-0">
-          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            {label}
-          </span>
-
-          <span
-            className={`mt-1 block break-words text-sm font-black ${valueClass}`}
-          >
-            {value}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InfoCard({
-  icon,
-  title,
-  value,
-}) {
-  return (
-    <div className="rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-[#0B5ED7]">
-          {icon}
-        </div>
-
-        <div>
-          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            {title}
-          </span>
-
-          <span className="mt-1 block text-sm font-black text-slate-800">
-            {value}
-          </span>
-        </div>
-      </div>
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <span className="font-bold text-slate-800 block text-xs">Governing Conformance Standards</span>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><strong>RFC 8314:</strong> Cleartext Considered Obsolete: Use of Transport Layer Security (TLS) for Email Submission and Access</li>
+                  <li><strong>RFC 3207:</strong> SMTP Service Extension for Secure SMTP over Transport Layer Security</li>
+                  <li><strong>RFC 7525:</strong> Recommendations for Secure Use of Transport Layer Security (TLS) and Datagram Transport Layer Security (DTLS)</li>
+                  <li><strong>NIST SP 800-52r2:</strong> Guidelines for the Selection, Configuration, and Use of Transport Layer Security (TLS) Implementations</li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

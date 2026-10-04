@@ -1,5 +1,5 @@
 """
-Unit tests for Step 11: STARTTLS Downgrade & Plaintext Fallback Analysis.
+Unit tests for STARTTLS Downgrade & Plaintext Fallback Analysis.
 Validates passive PCAP forensic limitations, non-attribution boundaries,
 and protocol-state downgrade conditions.
 """

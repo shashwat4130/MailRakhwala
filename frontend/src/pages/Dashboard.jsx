@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -18,13 +18,32 @@ import {
   Upload,
   Activity,
   X,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts';
+import { useAnalysis } from '../hooks/useAnalysis';
 import {
   downloadAnalysisJson,
   downloadAnalysisPdf,
-  getActiveAnalysisId,
-  getAnalysisReport,
 } from '../services/api';
+import { SEVERITY_COLORS, STATUS_COLORS } from '../utils/severity';
+import {
+  isReportApplicable,
+  getPostureScore,
+  getAssessmentStatus,
+  getApplicabilityReason,
+} from '../utils/reportModel';
 
 const Card = ({ children, className = '', onClick }) => (
   <div
@@ -147,13 +166,22 @@ const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
   const finalScore =
     typeof postureReport?.posture_score === 'number' && Number.isFinite(postureReport.posture_score)
       ? postureReport.posture_score
-      : Math.max(0, Math.min(100, baseScore - totalPenalty));
+      : typeof postureReport?.score === 'number' && Number.isFinite(postureReport.score)
+      ? postureReport.score
+      : null;
 
   const severity = String(postureReport?.severity ?? '').toUpperCase();
-  const scoreStatus = finalScore >= 85 ? 'Strong posture' : finalScore >= 60 ? 'Needs attention' : 'Review required';
+  const scoreStatus =
+    finalScore === null
+      ? 'Not Assessed'
+      : finalScore >= 85
+      ? 'Strong posture'
+      : finalScore >= 60
+      ? 'Needs attention'
+      : 'Review required';
   const severityLabel = severity ? severity.charAt(0) + severity.slice(1).toLowerCase() : scoreStatus;
 
-  const pointsRemaining = Math.max(0, Math.min(100, finalScore));
+  const pointsRemaining = finalScore !== null ? Math.max(0, Math.min(100, finalScore)) : 0;
   const scoreExplanation =
     deductions.length === 0
       ? `No verified security issue reduced the starting score of ${baseScore}.`
@@ -238,7 +266,7 @@ const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
               Score explanation
             </div>
             <h2 id="score-analysis-title" className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-              Why did I get {finalScore}/100?
+              {finalScore !== null ? `Why did I get ${finalScore}/100?` : 'Posture Score Assessment'}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               See what MailRakhwala found and how many points each issue removed.
@@ -257,8 +285,12 @@ const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
         <div className="min-h-0 overflow-y-auto p-5 sm:p-7">
           <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
             <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-full bg-[#061A3A] text-white shadow-[0_12px_35px_rgba(6,26,58,0.22)]">
-              <span className="text-3xl font-black leading-none">{finalScore}</span>
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-wider text-blue-200">/ 100</span>
+              <span className={`font-black leading-none ${finalScore !== null ? 'text-3xl' : 'text-sm text-center px-2'}`}>
+                {finalScore !== null ? finalScore : 'Not Assessed'}
+              </span>
+              {finalScore !== null && (
+                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider text-blue-200">/ 100</span>
+              )}
             </div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">Your security score</p>
@@ -381,7 +413,14 @@ const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
             </div>
             <div className="mt-4 rounded-xl bg-white px-4 py-3 ring-1 ring-blue-100">
               <p className="text-sm font-semibold text-slate-700">
-                {baseScore} starting points − {totalPenalty} points lost = <span className="font-black text-blue-700">{finalScore}/100</span>
+                {finalScore !== null ? (
+                  <>
+                    {baseScore} starting points − {totalPenalty} points lost ={' '}
+                    <span className="font-black text-blue-700">{finalScore}/100</span>
+                  </>
+                ) : (
+                  <span className="font-bold text-slate-600">Posture score was not evaluated for this session.</span>
+                )}
               </p>
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 Only evidence-backed non-compliant conditions are included in the deduction.
@@ -406,80 +445,70 @@ const ScoreAnalysisModal = ({ postureReport, onClose, onViewFindings }) => {
 
 function Dashboard() {
   const navigate = useNavigate();
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { report, loading, error, reload, analysisId, processingStatus } = useAnalysis();
   const [scoreAnalysisOpen, setScoreAnalysisOpen] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
-  const resolveCurrentId = () =>
-    getActiveAnalysisId() ||
-    localStorage.getItem('active_analysis_id') ||
-    localStorage.getItem('analysis_id') ||
-    null;
+  const findings = useMemo(
+    () => (Array.isArray(report?.compliance_findings) ? report.compliance_findings : []),
+    [report]
+  );
 
-  const [analysisId, setAnalysisId] = useState(resolveCurrentId);
+  const deductions = useMemo(
+    () => (Array.isArray(report?.posture_report?.deductions) ? report.posture_report.deductions : []),
+    [report]
+  );
 
-  useEffect(() => {
-    const handleIdChange = () => setAnalysisId(resolveCurrentId());
+  const severityData = useMemo(() => {
+    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
+    findings.forEach((f) => {
+      const sev = f.severity?.toUpperCase() || 'INFO';
+      if (counts[sev] !== undefined) counts[sev]++;
+      else counts.INFO++;
+    });
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, count]) => ({
+        name,
+        count,
+        color: SEVERITY_COLORS[name] || '#64748b',
+      }));
+  }, [findings]);
 
-    window.addEventListener('analysisIdChanged', handleIdChange);
-    window.addEventListener('storage', handleIdChange);
+  const statusData = useMemo(() => {
+    const counts = { COMPLIANT: 0, NON_COMPLIANT: 0, UNKNOWN: 0, NOT_APPLICABLE: 0 };
+    findings.forEach((f) => {
+      const st = f.status || 'UNKNOWN';
+      if (counts[st] !== undefined) counts[st]++;
+      else counts.UNKNOWN++;
+    });
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, count]) => ({
+        name: name.replace(/_/g, ' '),
+        rawKey: name,
+        count,
+        color: STATUS_COLORS[name] || '#94a3b8',
+      }));
+  }, [findings]);
 
-    return () => {
-      window.removeEventListener('analysisIdChanged', handleIdChange);
-      window.removeEventListener('storage', handleIdChange);
-    };
-  }, []);
+  const deductionData = useMemo(() => {
+    return deductions.map((d) => ({
+      name: d.rule_id,
+      penalty: d.penalty,
+      title: d.title,
+    }));
+  }, [deductions]);
 
-  useEffect(() => {
-    const currentId = resolveCurrentId();
-
-    if (!currentId) {
-      setReport(null);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    getAnalysisReport(currentId)
-      .then((data) => {
-        setReport(data);
-      })
-      .catch((err) => {
-        console.error('Failed to load dashboard report:', err);
-        setError(
-          err.response?.data?.detail ||
-            'The security report could not be loaded.'
-        );
-      })
-      .finally(() => setLoading(false));
-  }, [analysisId]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-          </div>
-          <p className="text-sm font-semibold text-slate-600">
-            Loading security report...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const effectiveId = analysisId || resolveCurrentId();
+  const effectiveId = analysisId;
 
   const handleDownloadFullReport = async () => {
     try {
+      setExportError(null);
       await downloadAnalysisJson(effectiveId);
     } catch (err) {
       console.error('Failed to download full report:', err);
-      setError(
+      setExportError(
         err?.response?.data?.detail ||
           err?.message ||
           'The full report could not be downloaded.'
@@ -489,16 +518,40 @@ function Dashboard() {
 
   const handleDownloadPdf = async () => {
     try {
+      setExportError(null);
       await downloadAnalysisPdf(effectiveId);
     } catch (err) {
       console.error('Failed to download PDF report:', err);
-      setError(
+      setExportError(
         err?.response?.data?.detail ||
           err?.message ||
           'The PDF report could not be downloaded.'
       );
     }
   };
+
+  if (loading && !report) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white p-6">
+        <div className="flex flex-col items-center gap-4 text-center max-w-md">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm">
+            <RefreshCw className="h-6 w-6 animate-spin" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900">
+              {processingStatus || 'Analyzing Network Capture...'}
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Evaluating TCP streams, TLS handshakes, PKI certificates, and deterministic RFC compliance baselines.
+            </p>
+          </div>
+          <div className="w-48 h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
+            <div className="h-full bg-blue-600 rounded-full animate-pulse w-3/4" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!effectiveId) {
     return (
@@ -539,50 +592,70 @@ function Dashboard() {
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
             {error}
           </p>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="mt-7 rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-          >
-            Return to Capture Ingestion
-          </button>
+          <div className="mt-7 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => reload()}
+              className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-200 transition hover:bg-blue-700"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry Report
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+            >
+              Return to Capture Ingestion
+            </button>
+          </div>
         </Card>
       </div>
     );
   }
 
+  if (!report) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white p-6">
+        <div className="flex flex-col items-center gap-4 text-center max-w-md">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm">
+            <RefreshCw className="h-6 w-6 animate-spin" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900">
+              {processingStatus || 'Loading analysis report...'}
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Fetching cryptographic security telemetry and protocol assessments...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const totalStreams = report?.session?.total_streams ?? 0;
-  const findings = Array.isArray(report?.compliance_findings)
-    ? report.compliance_findings
-    : [];
 
   const detectedProtocol =
     report?.protocol_summary?.detected_protocol || 'Not detected';
 
   const hasTls = Boolean(report?.protocol_summary?.has_tls);
 
-  const normalizedProtocol = String(detectedProtocol).trim().toUpperCase();
+  const isApplicable = isReportApplicable(report);
+  const assessmentStatus = getAssessmentStatus(report);
+  const applicabilityReason =
+    getApplicabilityReason(report) ||
+    'No supported email protocol/security assessment was observed in this capture.';
 
-  const hasEmailSignals =
-    totalStreams > 0 &&
-    ['SMTP', 'SMTPS', 'IMAP', 'IMAPS', 'POP3', 'POP3S'].includes(
-      normalizedProtocol
-    );
-
-  const rawScore = report?.posture_report?.posture_score;
-  const hasValidScore =
-    typeof rawScore === 'number' && Number.isFinite(rawScore);
-
-  const postureScore = hasEmailSignals && hasValidScore ? rawScore : null;
+  const postureScore = getPostureScore(report);
 
   const riskClass =
-    report?.risk_classification?.predicted_risk_class ||
-    report?.risk_classification?.risk_class ||
+    report?.risk_classification?.predicted_class ||
     null;
 
   const anomalyValue =
-    typeof report?.anomaly_detection?.is_anomaly === 'boolean'
-      ? report.anomaly_detection.is_anomaly
+    typeof report?.anomaly_detection?.is_anomalous === 'boolean'
+      ? report.anomaly_detection.is_anomalous
       : null;
 
   const seriousIssues = findings.filter((finding) => {
@@ -598,7 +671,9 @@ function Dashboard() {
       : 'Not available';
 
   const standardChecked =
-    report?.standard_checked || 'Not available';
+    report?.posture_report?.engine_version
+      ? `RFC Conformance v${report.posture_report.engine_version}`
+      : 'RFC 8314 / RFC 3207';
 
   const scoreRing =
     postureScore === null
@@ -606,30 +681,35 @@ function Dashboard() {
       : Math.max(0, Math.min(100, postureScore));
 
   const scoreStatus =
-    postureScore === null
-      ? 'Not Assessed'
-      : postureScore >= 85
-        ? 'Strong posture'
-        : postureScore >= 60
-          ? 'Needs attention'
-          : 'Review required';
+    !isApplicable
+      ? 'Assessment Not Applicable'
+      : postureScore === null
+        ? 'Not Assessed'
+        : postureScore >= 85
+          ? 'Strong posture'
+          : postureScore >= 60
+            ? 'Needs attention'
+            : 'Review required';
 
   const scoreMessage =
-    postureScore === null
-      ? 'No observable email/TLS traffic was available for cryptographic assessment.'
-      : 'Authoritative posture score returned by the security analysis backend.';
+    !isApplicable
+      ? applicabilityReason
+      : postureScore === null
+        ? 'No observable email/TLS traffic was available for cryptographic assessment.'
+        : 'Authoritative posture score returned by the security analysis backend.';
 
-  const riskDisplay = riskClass || 'Not available';
-  const anomalyDisplay =
-    anomalyValue === null
+  const riskDisplay = !isApplicable ? 'Not applicable' : (riskClass || 'Not available');
+  const anomalyDisplay = !isApplicable
+    ? 'Not applicable'
+    : anomalyValue === null
       ? 'Not available'
       : anomalyValue
         ? 'Unusual activity detected'
         : 'No anomaly detected';
 
-  const protocolDisplay = hasEmailSignals
+  const protocolDisplay = isApplicable
     ? detectedProtocol
-    : 'Not assessed';
+    : (detectedProtocol || 'Non-Email');
 
   const reportCardDescription =
     `${filename} · ${fileSize} · ${totalStreams} stream${totalStreams === 1 ? '' : 's'} inspected.`;
@@ -641,7 +721,6 @@ function Dashboard() {
       <div className="pointer-events-none absolute -right-40 bottom-10 h-96 w-96 rounded-full bg-cyan-200/20 blur-3xl" />
 
       <div className="relative mx-auto max-w-[1280px] space-y-6">
-        {/* Dashboard header */}
         <header className="flex flex-col gap-5 border-b border-blue-100/80 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <SectionEyebrow>Security command center</SectionEyebrow>
@@ -680,7 +759,20 @@ function Dashboard() {
           </div>
         </header>
 
-        {/* Security overview */}
+        {!isApplicable && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-900">
+                Assessment Not Applicable
+              </h3>
+              <p className="mt-0.5 text-xs text-amber-800 leading-relaxed">
+                {applicabilityReason}
+              </p>
+            </div>
+          </div>
+        )}
+
         <section>
           <div className="mb-3 flex items-center justify-between">
             <div>
@@ -697,9 +789,9 @@ function Dashboard() {
             <OverviewCard
               icon={ShieldCheck}
               label="Posture"
-              value={postureScore === null ? 'Not Assessed' : `${postureScore}/100`}
-              detail={scoreStatus}
-              tone={postureScore === null ? 'slate' : 'blue'}
+              value={!isApplicable ? 'Not Applicable' : (postureScore === null ? 'Not Assessed' : `${postureScore}/100`)}
+              detail={!isApplicable ? 'Assessment Not Applicable' : scoreStatus}
+              tone={!isApplicable ? 'slate' : (postureScore === null ? 'slate' : 'blue')}
             />
             <OverviewCard
               icon={AlertTriangle}
@@ -713,19 +805,18 @@ function Dashboard() {
               label="Risk / anomaly"
               value={riskDisplay}
               detail={anomalyDisplay}
-              tone={riskClass ? 'blue' : 'slate'}
+              tone={riskClass && isApplicable ? 'blue' : 'slate'}
             />
             <OverviewCard
               icon={Mail}
               label="Protocol"
               value={protocolDisplay}
               detail={`${totalStreams} total stream${totalStreams === 1 ? '' : 's'}`}
-              tone={hasEmailSignals ? 'emerald' : 'slate'}
+              tone={isApplicable ? 'emerald' : 'slate'}
             />
           </div>
         </section>
 
-        {/* Main posture panel */}
         <Card className="overflow-hidden ring-1 ring-blue-100/70 shadow-[0_25px_80px_rgba(15,76,160,0.10)]">
           <div className="grid lg:grid-cols-[1.1fr_1.9fr]">
             <div className="relative overflow-hidden bg-gradient-to-br from-[#061A3A] via-[#0B4EA2] to-[#087EA4] p-7 text-white sm:p-8">
@@ -757,8 +848,8 @@ function Dashboard() {
                   >
                     <div className="flex h-[106px] w-[106px] flex-col items-center justify-center rounded-full bg-[#04183D] shadow-inner">
                       {postureScore === null ? (
-                        <span className="px-3 text-center text-sm font-black leading-tight">
-                          Not Assessed
+                        <span className="px-2 text-center text-xs font-black leading-tight">
+                          {!isApplicable ? 'Not Applicable' : 'Not Assessed'}
                         </span>
                       ) : (
                         <>
@@ -786,7 +877,7 @@ function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setScoreAnalysisOpen(true)}
-                  disabled={postureScore === null}
+                  disabled={postureScore === null || !isApplicable}
                   className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-extrabold text-[#061A3A] shadow-[0_10px_30px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <BarChart3 className="h-4 w-4" />
@@ -877,7 +968,159 @@ function Dashboard() {
           </div>
         </Card>
 
-        {/* Bottom action cards */}
+        {/* Consolidated Telemetry & Compliance Analytics */}
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-slate-900">
+                Compliance & Telemetry Analytics
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Visual distribution of evaluated security rules, severity levels, and penalty deductions.
+              </p>
+            </div>
+            <span className="text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-1 rounded font-bold">
+              {findings.length} Evaluated Rules
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Findings by Severity Donut */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-amber-500" />
+                  Findings by Severity
+                </h3>
+                <span className="text-xs text-slate-400 font-mono">{findings.length} Total</span>
+              </div>
+
+              {severityData.length > 0 ? (
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={severityData}
+                        dataKey="count"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {severityData.map((entry, index) => (
+                          <Cell key={`cell-sev-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(val, name) => [`${val} findings`, `${name} Severity`]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-56 flex items-center justify-center text-slate-400 text-xs">
+                  No findings evaluated for this capture
+                </div>
+              )}
+            </Card>
+
+            {/* Compliance Status Distribution Donut */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  Compliance Status Distribution
+                </h3>
+                <span className="text-xs text-slate-400 font-mono">RFC Conformance</span>
+              </div>
+
+              {statusData.length > 0 ? (
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusData}
+                        dataKey="count"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        label={({ name, count }) => `${name}: ${count}`}
+                        labelLine={false}
+                      >
+                        {statusData.map((entry, index) => (
+                          <Cell key={`cell-st-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(val, name) => [`${val} rules`, name]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-56 flex items-center justify-center text-slate-400 text-xs">
+                  No status breakdown available
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Penalty Deductions Bar Chart if penalties exist */}
+          {deductionData.length > 0 && (
+            <Card className="mt-4 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-rose-500" />
+                    Penalty Point Deductions by Rule
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Individual score penalties deducted from the 100-point posture baseline
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-rose-600 bg-rose-50 px-2.5 py-1 rounded font-bold">
+                  Total Penalty: -{report?.posture_report?.total_penalty ?? 0} pts
+                </span>
+              </div>
+
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={deductionData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
+                    <YAxis stroke="#94a3b8" fontSize={11} unit=" pts" />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const item = payload[0].payload;
+                          return (
+                            <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg text-xs">
+                              <p className="font-bold text-slate-800">{item.name}</p>
+                              <p className="text-slate-600">{item.title}</p>
+                              <p className="text-rose-600 font-mono font-bold mt-1">
+                                Penalty: -{item.penalty} pts
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="penalty" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+        </section>
+
         <section>
           <div className="mb-3 flex items-end justify-between">
             <div>
@@ -945,7 +1188,6 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* Compact metadata footer */}
         <Card className="p-5">
           <div className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
             <div>

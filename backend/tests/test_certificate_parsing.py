@@ -1,5 +1,5 @@
 """
-Tests verifying Step 17 X.509 Certificate Parsing.
+Tests verifying X.509 Certificate Parsing.
 Uses local deterministic cryptography fixtures without network dependencies.
 """
 

@@ -1,5 +1,5 @@
 """
-MailRakhwala Identity & Trust Analysis Schemas (Step 19)
+MailRakhwala Identity & Trust Analysis Schemas
 Data contracts for passive correlation between observed TLS SNI, Certificate SAN,
 mail-server session hostnames, and offline DNS/trust context.
 """
@@ -60,6 +60,6 @@ class IdentityAnalysisResult(BaseModel):
         default_factory=lambda: [
             "Passive identity analysis evaluates consistency across observed session indicators.",
             "An identity mismatch or absence of evidence does NOT indicate active malicious tampering or MITM.",
-            "Full offline PKI trust-path resolution and revocation checking belong to Step 20."
+            "Full offline PKI trust-path resolution and revocation checking are performed in trust verification."
         ]
     )

@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 
 class MLFeatureVector(BaseModel):
     """
-    Step 25: 19-Dimensional Deterministic Feature Vector for Machine Learning ingestion.
-    Encodes protocol properties, certificate status, Step 21 compliance,
-    Step 22 weaknesses, Step 23 threats, and Step 24 cryptographic posture score.
+    19-Dimensional Deterministic Feature Vector for Machine Learning ingestion.
+    Encodes protocol properties, certificate status, compliance findings,
+    weaknesses, threats, and cryptographic posture score.
     """
     stream_id: str = Field(..., description="Unique identifier for the session/stream")
 
@@ -66,14 +66,14 @@ class MLFeatureVector(BaseModel):
         description="STARTTLS downgrade anomaly (1.0 -> Downgrade detected, 0.0 -> Normal/Clean, -1.0 -> Unknown)",
     )
 
-    # 4. Pipeline Aggregations from Steps 21-24 (Features 13 - 18)
+    # 4. Pipeline Aggregations (Features 13 - 18)
     compliance_violation_count: float = Field(
         ...,
-        description="Total confirmed NON_COMPLIANT findings from Step 21",
+        description="Total confirmed NON_COMPLIANT compliance findings",
     )
     unknown_finding_count: float = Field(
         ...,
-        description="Total findings flagged with UNKNOWN status from Step 21",
+        description="Total compliance findings flagged with UNKNOWN status",
     )
     high_critical_finding_count: float = Field(
         ...,
@@ -81,15 +81,15 @@ class MLFeatureVector(BaseModel):
     )
     vulnerability_count: float = Field(
         ...,
-        description="Count of mapped CWEs/CVEs from Step 22",
+        description="Count of mapped CWEs/CVEs",
     )
     threat_mapping_count: float = Field(
         ...,
-        description="Count of mapped ATT&CK threats/mitigations from Step 23",
+        description="Count of mapped ATT&CK threats/mitigations",
     )
     cryptographic_security_score: float = Field(
         ...,
-        description="Propagated Step 24 Posture Score (0.0 to 100.0, -1.0 if unavailable)",
+        description="Propagated Posture Score (0.0 to 100.0, -1.0 if unavailable)",
     )
 
     # 5. Client Metadata (Feature 19)

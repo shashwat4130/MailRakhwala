@@ -1,5 +1,5 @@
 """
-MailRakhwala STARTTLS State Machine Schemas (Step 10)
+MailRakhwala STARTTLS State Machine Schemas
 Domain contracts for explicit STARTTLS state transitions, evidence, and outcomes.
 """
 

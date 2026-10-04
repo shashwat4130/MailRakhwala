@@ -1,5 +1,5 @@
 """
-MailRakhwala Offline Revocation & Trust Evidence Schemas (Step 20)
+MailRakhwala Offline Revocation & Trust Evidence Schemas
 Data contracts for offline chain path validation against bundled CA roots
 and passive OCSP stapling inspection.
 """
@@ -102,7 +102,7 @@ class CRLEvidence(BaseModel):
 
 
 class OfflineTrustResult(BaseModel):
-    """Consolidated Step 20 result covering trust path, OCSP stapling, and CRL evidence."""
+    """Consolidated result covering trust path, OCSP stapling, and CRL evidence."""
     stream_id: str
     certificate_trust: CertificateTrustEvidence
     ocsp_evidence: OCSPEvidence

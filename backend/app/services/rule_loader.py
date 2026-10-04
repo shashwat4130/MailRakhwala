@@ -1,5 +1,5 @@
 """
-MailRakhwala Authoritative Step 4 Rule Specification Loader (Substep 21A)
+MailRakhwala Authoritative Rule Specification Loader
 Directly parses, validates, and indexes rules from the canonical rules/ directory.
 Strictly disallows hard-coded fallback rulebooks, silent defaults, or unvalidated rule objects.
 """
@@ -16,12 +16,12 @@ RULES_DIR = settings.RULES_DIR
 
 
 class RuleCatalogError(Exception):
-    """Raised when an authoritative Step 4 rule specification cannot be loaded or is invalid."""
+    """Raised when an authoritative security rule specification cannot be loaded or is invalid."""
     pass
 
 
 class SecurityRuleDefinition(BaseModel):
-    """Normalized rule specification entry derived directly from Step 4 JSON specifications."""
+    """Normalized rule specification entry derived directly from canonical JSON specifications."""
     rule_id: str
     category: FindingCategory
     title: str
@@ -34,7 +34,7 @@ class SecurityRuleDefinition(BaseModel):
 
 
 class RuleCatalog:
-    """Authoritative in-memory index of Step 4 security rules."""
+    """Authoritative in-memory index of security rules."""
 
     def __init__(self, rules_dir: Optional[Path] = None):
         self.rules_dir = rules_dir or RULES_DIR
@@ -46,7 +46,7 @@ class RuleCatalog:
         self.load_rules()
 
     def load_rules(self):
-        """Loads and strictly validates all four authoritative Step 4 JSON rule files."""
+        """Loads and strictly validates all four authoritative JSON rule files."""
         self.rules.clear()
         self.approved_ciphers.clear()
         self.prohibited_cipher_patterns.clear()

@@ -1,5 +1,5 @@
 """
-MailRakhwala Certificate Extraction Service (Step 16)
+MailRakhwala Certificate Extraction Service
 Extracts raw DER X.509 certificates and certificate chains from reassembled TLS handshake records.
 """
 

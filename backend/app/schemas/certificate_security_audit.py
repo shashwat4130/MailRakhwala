@@ -1,5 +1,5 @@
 """
-MailRakhwala Certificate Security Audit Schemas (Step 18)
+MailRakhwala Certificate Security Audit Schemas
 Structured data contracts for evidence-backed certificate security findings.
 """
 
@@ -49,7 +49,7 @@ class CertificateEvidence(BaseModel):
     observed_property: str = Field(..., description="The exact attribute or field extracted from evidence")
     observed_value: Any = Field(..., description="The observed value of the field")
     reference_value: Optional[Any] = Field(default=None, description="The baseline, threshold, or reference comparison value")
-    rule_id: str = Field(..., description="Step 4 rulebook identifier or audit policy ID")
+    rule_id: str = Field(..., description="Rulebook identifier or audit policy ID")
     evaluation_time: Optional[datetime] = Field(default=None, description="UTC timestamp used as temporal reference")
 
 

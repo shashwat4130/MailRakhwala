@@ -1,5 +1,5 @@
 """
-MailRakhwala X.509 Certificate Parser Service (Step 17)
+MailRakhwala X.509 Certificate Parser Service
 Parses raw DER certificate objects into structured, typed metadata models.
 """
 

@@ -1,5 +1,5 @@
 """
-MailRakhwala STARTTLS State Machine (Step 10)
+MailRakhwala STARTTLS State Machine
 Deterministic, chronological protocol state engine for SMTP, IMAP, and POP3 explicit TLS transitions.
 Supports wire frame ordering across fragments and dialogue-turn awareness within contiguous streams.
 """

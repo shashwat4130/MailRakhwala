@@ -1,7 +1,7 @@
 """
-MailRakhwala Key Exchange & PFS Analysis Service (Step 15)
+MailRakhwala Key Exchange & PFS Analysis Service
 Evaluates negotiated key exchange mechanisms and Perfect Forward Secrecy (PFS)
-characteristics from structured Step 13 ClientHello and Step 14 ServerHello evidence.
+characteristics from structured ClientHello and ServerHello evidence.
 """
 
 from typing import Dict, List, Optional

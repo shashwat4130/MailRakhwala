@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any, List, Optional, Sequence, Union
 
+import joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
@@ -36,12 +38,12 @@ class ReferenceDataError(ValueError):
 
 class IsolationForestDetector:
     """
-    Step 26: Simple, deterministic Isolation Forest anomaly detector.
+    Deterministic Isolation Forest anomaly detector.
     
-    Consumes Step 25's 19-dimensional feature vectors.
+    Consumes 19-dimensional feature vectors.
     Identifies configurations that statistically diverge from reference distributions.
     
-    Handles Step 25's explicit -1.0 unknown values using reference-column medians
+    Handles explicit -1.0 unknown values using reference-column medians
     for model input while preserving the original vectors with -1.0 for output traceability.
     """
 
@@ -282,3 +284,34 @@ class IsolationForestDetector:
             total_evaluated=len(results),
             total_anomalies=anomaly_count,
         )
+
+    def save(self, filepath: Union[str, Path]) -> None:
+        """Serializes the fitted detector and reference imputation values to disk."""
+        if not self._is_fitted or self.model is None or self._imputation_values is None:
+            raise ModelNotFittedError("Cannot save an unfitted detector.")
+        data = {
+            "model": self.model,
+            "_is_fitted": self._is_fitted,
+            "_imputation_values": self._imputation_values,
+            "n_estimators": self.n_estimators,
+            "contamination": self.contamination,
+            "random_state": self.random_state,
+            "feature_count": EXPECTED_FEATURE_COUNT,
+        }
+        joblib.dump(data, filepath)
+
+    @classmethod
+    def load(cls, filepath: Union[str, Path]) -> "IsolationForestDetector":
+        """Loads a previously fitted detector and reference imputation values from disk."""
+        data = joblib.load(filepath)
+        if not isinstance(data, dict) or "model" not in data or "_imputation_values" not in data:
+            raise ValueError(f"Invalid IsolationForest artifact structure in {filepath}")
+        detector = cls(
+            n_estimators=data.get("n_estimators", 100),
+            contamination=data.get("contamination", "auto"),
+            random_state=data.get("random_state", 42),
+        )
+        detector.model = data["model"]
+        detector._is_fitted = data.get("_is_fitted", True)
+        detector._imputation_values = data["_imputation_values"]
+        return detector

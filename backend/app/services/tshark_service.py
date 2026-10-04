@@ -85,7 +85,6 @@ class TSharkService:
                 "TShark binary could not be found on the system."
             )
 
-        # Keep this configurable without requiring a config.py change yet.
         # Default: 120 seconds of no output / stalled processing.
         self.timeout_sec = float(
             getattr(settings, "TSHARK_TIMEOUT_SEC", 120.0)
@@ -324,10 +323,7 @@ class TSharkService:
             )
             return None
 
-        # ------------------------------------------------------------------
         # Basic frame / addressing fields
-        # ------------------------------------------------------------------
-
         f_num = cols[0]
         f_time = cols[1]
         f_len = cols[2]
@@ -340,10 +336,7 @@ class TSharkService:
 
         raw_protocols = cols[7].strip()
 
-        # ------------------------------------------------------------------
         # Transport fields
-        # ------------------------------------------------------------------
-
         tcp_sport = cols[8].strip()
         udp_sport = cols[9].strip()
 
@@ -352,10 +345,7 @@ class TSharkService:
 
         tcp_stream_raw = cols[12].strip()
 
-        # ------------------------------------------------------------------
         # TCP reassembly fields
-        # ------------------------------------------------------------------
-
         tcp_syn_raw = cols[13].strip()
         tcp_ack_flag_raw = cols[14].strip()
         tcp_fin_raw = cols[15].strip()
@@ -366,10 +356,7 @@ class TSharkService:
 
         tcp_payload_raw = cols[19].strip()
 
-        # ------------------------------------------------------------------
         # TLS fields
-        # ------------------------------------------------------------------
-
         tls_record_version = cols[20].strip()
         tls_handshake_type = cols[21].strip()
         tls_handshake_version = cols[22].strip()
@@ -388,10 +375,7 @@ class TSharkService:
             tls_sig_hash_alg,
         )
 
-        # ------------------------------------------------------------------
         # L4 transport resolution
-        # ------------------------------------------------------------------
-
         if tcp_sport or tcp_dport:
             transport_protocol = "TCP"
 
@@ -407,10 +391,7 @@ class TSharkService:
         else:
             transport_protocol = "RAW"
 
-        # ------------------------------------------------------------------
         # Highest protocol layer
-        # ------------------------------------------------------------------
-
         if raw_protocols:
             tokens = [
                 token
@@ -427,10 +408,7 @@ class TSharkService:
         else:
             highest_layer = transport_protocol
 
-        # ------------------------------------------------------------------
         # Address / port / stream parsing
-        # ------------------------------------------------------------------
-
         src_ip = ip_src or ipv6_src or None
         dst_ip = ip_dst or ipv6_dst or None
 
@@ -448,10 +426,7 @@ class TSharkService:
 
         tcp_stream = self._parse_int(tcp_stream_raw)
 
-        # ------------------------------------------------------------------
         # TCP sequence / flags / payload
-        # ------------------------------------------------------------------
-
         tcp_seq = self._parse_int(tcp_seq_raw)
         tcp_ack = self._parse_int(tcp_ack_raw)
 
@@ -466,10 +441,7 @@ class TSharkService:
 
         payload_len = len(payload) if payload is not None else None
 
-        # ------------------------------------------------------------------
         # Build normalized packet
-        # ------------------------------------------------------------------
-
         frame_number = self._parse_int(f_num)
         frame_len = self._parse_int(f_len)
         timestamp_epoch = self._parse_float(f_time)
@@ -645,8 +617,7 @@ class TSharkService:
         packet_count = 0
 
         try:
-            # Read stdout directly. This has been verified independently
-            # against the installed Windows TShark binary.
+            # Read stdout directly from the TShark process stream.
             while True:
                 line = proc.stdout.readline()
 

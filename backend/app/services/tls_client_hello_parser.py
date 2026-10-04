@@ -1,5 +1,5 @@
 """
-MailRakhwala TLS ClientHello Parser Service (Step 13)
+MailRakhwala TLS ClientHello Parser Service
 Extracts, bounds, and structures ClientHello handshakes across reassembled TLS records.
 """
 

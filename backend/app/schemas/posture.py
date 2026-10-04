@@ -1,5 +1,5 @@
 """
-Pydantic schemas for Step 24 - Cryptographic Posture & Risk Engine.
+Pydantic schemas for Cryptographic Posture & Risk Engine.
 
 Provides simple, transparent 0-100 posture scoring with deterministic deduction breakdowns.
 """
@@ -24,10 +24,11 @@ class PostureDeduction(BaseModel):
     rule_id: str = Field(..., description="Deduction rule ID from posture catalog")
     title: str = Field(..., description="Human-readable title of the penalty reason")
     penalty: int = Field(..., ge=0, description="Deduction points subtracted from base score")
-    upstream_rule_id: str = Field(..., description="Step 21 Compliance rule ID")
-    finding_id: str = Field(..., description="Step 21 Compliance finding ID")
-    weakness_id: Optional[str] = Field(None, description="Step 22 Weakness mapping ID if available")
-    threat_mapping_id: Optional[str] = Field(None, description="Step 23 Threat context ID if available")
+    severity: Optional[str] = Field(None, description="Deduction rule severity level")
+    upstream_rule_id: str = Field(..., description="Compliance rule ID")
+    finding_id: str = Field(..., description="Compliance finding ID")
+    weakness_id: Optional[str] = Field(None, description="Weakness mapping ID if available")
+    threat_mapping_id: Optional[str] = Field(None, description="Threat context ID if available")
     observed_property: str = Field(..., description="Observed cryptographic property")
     observed_value: Any = Field(..., description="Observed property value")
     certificate_index: Optional[int] = None
@@ -39,10 +40,10 @@ class CryptographicPostureReport(BaseModel):
     """Complete, transparent session cryptographic posture assessment."""
     session_id: str
     stream_id: str
-    posture_score: int = Field(..., ge=0, le=100, description="Final posture score between 0 and 100")
-    severity: PostureSeverity = Field(..., description="LOW, MEDIUM, HIGH, or CRITICAL posture risk")
+    posture_score: Optional[int] = Field(None, ge=0, le=100, description="Final posture score between 0 and 100, or None if not evaluated/not applicable")
+    severity: Optional[PostureSeverity] = Field(None, description="LOW, MEDIUM, HIGH, or CRITICAL posture risk, or None if not applicable")
     base_score: int = Field(default=100, description="Baseline score prior to deductions")
-    total_penalty: int = Field(..., ge=0, description="Sum of all deduplicated penalties")
+    total_penalty: int = Field(default=0, ge=0, description="Sum of all deduplicated penalties")
     deductions: List[PostureDeduction] = Field(default_factory=list, description="Breakdown of deductions applied")
     evaluated_findings_count: int = 0
     compliant_findings_count: int = 0
@@ -51,3 +52,5 @@ class CryptographicPostureReport(BaseModel):
     deterministic: bool = True
     engine_version: str = "1.0.0"
     limitations: str = "Deterministic evaluation of observed passive network traffic. Not an attack likelihood model."
+    applicability: str = Field(default="APPLICABLE", description="Assessment applicability: APPLICABLE or NOT_APPLICABLE")
+    assessment_status: str = Field(default="EVALUATED", description="Assessment status: EVALUATED, NOT_APPLICABLE, or NOT_EVALUATED")

@@ -131,13 +131,11 @@ export const downloadAnalysisJson = async (analysisId) => {
   }
 
   const response = await apiClient.get(
-    `/analysis/${analysisId}/report/json`,
-    {
-      responseType: 'blob',
-    }
+    `/analysis/${analysisId}/report`
   );
 
-  const blob = new Blob([response.data], {
+  const jsonString = JSON.stringify(response.data, null, 2);
+  const blob = new Blob([jsonString], {
     type: 'application/json',
   });
 

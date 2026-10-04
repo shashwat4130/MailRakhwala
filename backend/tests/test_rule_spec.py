@@ -1,4 +1,4 @@
-"""Tests validating the Step 4 Security Rules Specification."""
+"""Tests validating the Security Rules Specification."""
 
 import re
 from pathlib import Path

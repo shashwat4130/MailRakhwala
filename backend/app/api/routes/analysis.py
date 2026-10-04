@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile,
 from fastapi.responses import Response
 
 from app.core.config import settings
+from app.schemas.anomaly_detection import AnomalyDetectionResult
 from app.schemas.api import AnalysisJobResponse, AnalysisUploadResponse, JobStatus
 from app.schemas.posture import CryptographicPostureReport, PostureSeverity
 from app.schemas.report_export import (
@@ -16,9 +17,12 @@ from app.schemas.report_export import (
     ProtocolSecuritySummary,
     SessionMetadata,
 )
+from app.schemas.risk_classification import RiskClassificationResult
+from app.schemas.shap_explainability import SHAPExplanationResult
 from app.services.anomaly_detector import IsolationForestDetector
 from app.services.job_store import job_store
 from app.services.ml_features import MLFeatureEngineeringService
+from app.services.ml_model_loader import ml_model_manager
 from app.services.protocol_classifier import protocol_classifier
 from app.services.tls_record_parser import tls_record_parser
 from app.services.tls_client_hello_parser import tls_client_hello_parser
@@ -80,9 +84,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
             logger.warning("Analysis job %s no longer exists.", analysis_id)
             return
 
-        # ==============================================================
-        # 1. TSHARK DISSECTION
-        # ==============================================================
+        # TShark packet dissection
 
         try:
             tshark = TSharkService()
@@ -120,9 +122,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
             "Analyzing PCAP capture...",
         )
 
-        # ==============================================================
-        # 2. TCP STREAM REASSEMBLY
-        # ==============================================================
+        # TCP stream reassembly
 
         try:
             reassembler = TCPReassemblyService()
@@ -148,9 +148,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
             len(streams),
         )
 
-        # ==============================================================
-        # 3. PROTOCOL CLASSIFICATION
-        # ==============================================================
+        # Protocol classification
 
         classifications = []
 
@@ -177,44 +175,17 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
 
         email_protocols = {"SMTP", "IMAP", "POP3"}
 
-        target_stream = None
-        target_classification = None
+        email_streams = [
+            (stream, classification)
+            for stream, classification in classifications
+            if classification.protocol.value.upper() in email_protocols
+        ]
 
-        # Prefer an email stream; do not mistake arbitrary TLS for email.
-        for stream, classification in classifications:
-            if classification.protocol.value.upper() in email_protocols:
-                target_stream = stream
-                target_classification = classification
-                break
-
-        # ==============================================================
-        # 4. TLS PRESENCE
-        # ==============================================================
-
-        # TLS evidence must be scoped to the selected email stream. A TLS
-        # packet belonging to an unrelated connection in the same PCAP must
-        # never make an SMTP/IMAP/POP3 stream appear encrypted.
-        #
-        # ReconstructedStream intentionally stores application payloads rather
-        # than the original TShark per-packet layer labels, so inspect the
-        # reconstructed client/server byte streams for a valid TLS record
-        # header. This is evidence of an observed TLS record, not merely a
-        # protocol/port expectation.
         def _contains_tls_record(payload: bytes) -> bool:
             if not payload:
                 return False
 
-            # TLS record content types:
-            #   20 change_cipher_spec
-            #   21 alert
-            #   22 handshake
-            #   23 application_data
-            #   24 heartbeat
-            # The legacy SSLv3/TLS record header uses a 0x03 major version.
             tls_content_types = {20, 21, 22, 23, 24}
-
-            # Search only a bounded prefix. We only need evidence that at
-            # least one syntactically plausible TLS record was captured.
             scan_limit = min(len(payload) - 5, 64 * 1024)
 
             for offset in range(max(0, scan_limit)):
@@ -231,516 +202,428 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                         payload[offset + 3:offset + 5],
                         byteorder="big",
                     )
-
-                    # TLS record payloads are limited to 2^14 bytes, with a
-                    # small implementation allowance for protocol overhead.
                     if 0 <= record_length <= 18432:
                         return True
 
             return False
 
-        has_tls = False
+        is_email_applicable = bool(email_streams)
+        posture_service = PostureEngineService()
+        threat_mapping_service = ThreatMappingService()
 
-        if target_stream is not None:
-            client_payload = bytes(
-                getattr(target_stream, "client_payload", b"") or b""
-            )
-            server_payload = bytes(
-                getattr(target_stream, "server_payload", b"") or b""
-            )
+        if is_email_applicable:
+            all_findings = []
+            all_weaknesses = []
+            all_threats = []
+            any_plaintext_auth_observed = False
+            has_tls = False
 
-            has_tls = (
-                _contains_tls_record(client_payload)
-                or _contains_tls_record(server_payload)
-            )
+            # Primary stream references for protocol_summary & ML
+            primary_stream = email_streams[0][0]
+            primary_classification = email_streams[0][1]
+            primary_tls_params = None
+            primary_kex_result = None
+            primary_cert_chain = None
+            primary_cert_audit = None
+            primary_cert_params = None
+            primary_identity_result = None
+            primary_trust_result = None
+            primary_starttls_assessment = None
+            primary_downgrade_result = None
+            primary_server_hello_result = None
 
-        # IMPORTANT: an implicit-TLS port such as 465/993/995 is contextual
-        # evidence only. A port number does not prove that TLS records were
-        # actually captured, so is_tls_port_context must not set has_tls.
-
-        # ==============================================================
-        # 5. STARTTLS STATE ANALYSIS
-        # ==============================================================
-
-        starttls_assessment = None
-        downgrade_result = None
-
-        if target_stream is not None and target_classification is not None:
-            try:
-                starttls_assessment = starttls_machine.evaluate_stream(
-                    target_stream,
-                    target_classification,
+            for stream, classification in email_streams:
+                c_payload = bytes(getattr(stream, "client_payload", b"") or b"")
+                s_payload = bytes(getattr(stream, "server_payload", b"") or b"")
+                stream_has_tls = (
+                    _contains_tls_record(c_payload)
+                    or _contains_tls_record(s_payload)
                 )
-                downgrade_result = starttls_downgrade_service.evaluate_downgrade(
-                    target_stream,
-                    target_classification,
-                    starttls_assessment,
-                )
-            except Exception as starttls_err:
-                logger.exception(
-                    "STARTTLS analysis failed for %s: %s",
-                    analysis_id,
-                    starttls_err,
-                )
+                if stream_has_tls:
+                    has_tls = True
 
-        # ==============================================================
-        # 6. TLS RECORD / HELLO ANALYSIS
-        # ==============================================================
-
-        client_record_result = None
-        server_record_result = None
-        client_hello_result = None
-        server_hello_result = None
-        tls_handshake_observed = False
-
-        if target_stream is not None and has_tls:
-            try:
-                (
-                    client_record_result,
-                    server_record_result,
-                ) = tls_record_parser.parse_stream(target_stream)
-
-                client_hello_result = (
-                    tls_client_hello_parser.parse_client_hello(
-                        client_record_result
+                stream_starttls_assessment = None
+                stream_downgrade_result = None
+                try:
+                    stream_starttls_assessment = starttls_machine.evaluate_stream(
+                        stream,
+                        classification,
                     )
-                )
-
-                server_hello_result = (
-                    tls_server_hello_parser.parse_server_hello(
-                        server_record_result
+                    stream_downgrade_result = starttls_downgrade_service.evaluate_downgrade(
+                        stream,
+                        classification,
+                        stream_starttls_assessment,
                     )
-                )
-
-                logger.info(
-                    "TLS handshake results for %s: ClientHello=%s, ServerHello=%s",
-                    analysis_id,
-                    client_hello_result.status.value,
-                    server_hello_result.status.value,
-                )
-
-                # Negotiated TLS parameters are applicable only when both
-                # handshake directions were successfully observed and parsed.
-                tls_handshake_observed = bool(
-                    client_hello_result is not None
-                    and server_hello_result is not None
-                    and getattr(client_hello_result.status, "value", client_hello_result.status) == "COMPLETE"
-                    and getattr(server_hello_result.status, "value", server_hello_result.status) == "COMPLETE"
-                    and client_hello_result.client_hello is not None
-                    and server_hello_result.server_hello is not None
-                )
-
-            except Exception as tls_err:
-                logger.exception(
-                    "TLS record/hello analysis failed for %s: %s",
-                    analysis_id,
-                    tls_err,
-                )
-
-        # ==============================================================
-        # 7. KEY EXCHANGE / PFS
-        # ==============================================================
-
-        key_exchange_result = None
-
-        if server_hello_result is not None:
-            try:
-                key_exchange_result = key_exchange_analyzer.analyze(
-                    client_hello_result,
-                    server_hello_result,
-                )
-            except Exception as kex_err:
-                logger.exception(
-                    "Key exchange analysis failed for %s: %s",
-                    analysis_id,
-                    kex_err,
-                )
-
-        # ==============================================================
-        # 8. CERTIFICATE EXTRACTION + PARSING + AUDIT
-        # ==============================================================
-
-        certificate_extraction = None
-        parsed_certificate_chain = None
-        certificate_audit = None
-
-        if server_record_result is not None and tls_handshake_observed:
-            try:
-                negotiated_version = None
-
-                if (
-                    server_hello_result is not None
-                    and server_hello_result.server_hello is not None
-                ):
-                    negotiated_version = (
-                        server_hello_result.server_hello.negotiated_version
+                except Exception as starttls_err:
+                    logger.exception(
+                        "STARTTLS analysis failed for %s/%s: %s",
+                        analysis_id,
+                        stream.stream_id,
+                        starttls_err,
                     )
 
-                certificate_extraction = (
-                    certificate_extractor.extract_certificates(
-                        server_record_result,
-                        is_tls_13=(negotiated_version == 0x0304),
-                    )
-                )
+                stream_client_record_result = None
+                stream_server_record_result = None
+                stream_client_hello_result = None
+                stream_server_hello_result = None
+                stream_tls_handshake_observed = False
 
-                parsed_certificate_chain = (
-                    certificate_parser.parse_chain(
-                        certificate_extraction
-                    )
-                )
+                if stream_has_tls:
+                    try:
+                        (
+                            stream_client_record_result,
+                            stream_server_record_result,
+                        ) = tls_record_parser.parse_stream(stream)
 
-                reference_time = None
+                        stream_client_hello_result = (
+                            tls_client_hello_parser.parse_client_hello(
+                                stream_client_record_result
+                            )
+                        )
+                        stream_server_hello_result = (
+                            tls_server_hello_parser.parse_server_hello(
+                                stream_server_record_result
+                            )
+                        )
 
-                if target_stream.first_timestamp is not None:
-                    reference_time = datetime.fromtimestamp(
-                        target_stream.first_timestamp,
+                        stream_tls_handshake_observed = bool(
+                            stream_client_hello_result is not None
+                            and stream_server_hello_result is not None
+                            and getattr(stream_client_hello_result.status, "value", stream_client_hello_result.status) == "COMPLETE"
+                            and getattr(stream_server_hello_result.status, "value", stream_server_hello_result.status) == "COMPLETE"
+                            and stream_client_hello_result.client_hello is not None
+                            and stream_server_hello_result.server_hello is not None
+                        )
+                    except Exception as tls_err:
+                        logger.exception(
+                            "TLS record/hello analysis failed for %s/%s: %s",
+                            analysis_id,
+                            stream.stream_id,
+                            tls_err,
+                        )
+
+                stream_key_exchange_result = None
+                if stream_server_hello_result is not None:
+                    try:
+                        stream_key_exchange_result = key_exchange_analyzer.analyze(
+                            stream_client_hello_result,
+                            stream_server_hello_result,
+                        )
+                    except Exception as kex_err:
+                        logger.exception(
+                            "Key exchange analysis failed for %s/%s: %s",
+                            analysis_id,
+                            stream.stream_id,
+                            kex_err,
+                        )
+
+                stream_cert_extraction = None
+                stream_cert_chain = None
+                stream_cert_audit = None
+
+                if stream_server_record_result is not None and stream_tls_handshake_observed:
+                    try:
+                        negotiated_version = None
+                        if (
+                            stream_server_hello_result is not None
+                            and stream_server_hello_result.server_hello is not None
+                        ):
+                            negotiated_version = (
+                                stream_server_hello_result.server_hello.negotiated_version
+                            )
+
+                        stream_cert_extraction = (
+                            certificate_extractor.extract_certificates(
+                                stream_server_record_result,
+                                is_tls_13=(negotiated_version == 0x0304),
+                            )
+                        )
+                        stream_cert_chain = certificate_parser.parse_chain(
+                            stream_cert_extraction
+                        )
+
+                        ref_time = None
+                        if stream.first_timestamp is not None:
+                            ref_time = datetime.fromtimestamp(
+                                stream.first_timestamp,
+                                tz=timezone.utc,
+                            )
+
+                        stream_cert_audit = certificate_security_auditor.audit_chain(
+                            stream_cert_chain,
+                            reference_time=ref_time,
+                        )
+                    except Exception as cert_err:
+                        logger.exception(
+                            "Certificate analysis failed for %s/%s: %s",
+                            analysis_id,
+                            stream.stream_id,
+                            cert_err,
+                        )
+
+                stream_identity_result = None
+                stream_trust_result = None
+                ref_time = None
+                if stream.first_timestamp is not None:
+                    ref_time = datetime.fromtimestamp(
+                        stream.first_timestamp,
                         tz=timezone.utc,
                     )
 
-                certificate_audit = (
-                    certificate_security_auditor.audit_chain(
-                        parsed_certificate_chain,
-                        reference_time=reference_time,
-                    )
-                )
-
-            except Exception as cert_err:
-                logger.exception(
-                    "Certificate analysis failed for %s: %s",
-                    analysis_id,
-                    cert_err,
-                )
-
-        # ==============================================================
-        # 9. IDENTITY + TRUST
-        # ==============================================================
-
-        identity_result = None
-        trust_result = None
-        reference_time = None
-
-        if target_stream is not None and target_stream.first_timestamp is not None:
-            reference_time = datetime.fromtimestamp(
-                target_stream.first_timestamp,
-                tz=timezone.utc,
-            )
-
-        if parsed_certificate_chain is not None:
-            try:
-                raw_der_certs = [
-                    raw.raw_der
-                    for raw in certificate_extraction.certificates
-                ]
-
-                trust_result = trust_revocation_service.analyze_session_trust(
-                    chain=parsed_certificate_chain,
-                    raw_der_certs=raw_der_certs,
-                    captured_ocsp_response_bytes=None,
-                    reference_time=reference_time,
-                )
-            except Exception as trust_err:
-                logger.exception(
-                    "Offline trust analysis failed for %s: %s",
-                    analysis_id,
-                    trust_err,
-                )
-
-            try:
-                leaf = parsed_certificate_chain.certificates[0]
-
-                sni = None
-                if (
-                    client_hello_result is not None
-                    and client_hello_result.client_hello is not None
-                ):
-                    sni = client_hello_result.client_hello.server_name
-
-                trust_path_context = None
-                if trust_result is not None:
-                    trust_path_context = {
-                        "trust_path_status": (
-                            trust_result
-                            .certificate_trust
-                            .trust_validation_status
-                            .value
+                if stream_cert_chain is not None and stream_cert_extraction is not None:
+                    try:
+                        raw_der_certs = [
+                            raw.raw_der
+                            for raw in stream_cert_extraction.certificates
+                        ]
+                        stream_trust_result = trust_revocation_service.analyze_session_trust(
+                            chain=stream_cert_chain,
+                            raw_der_certs=raw_der_certs,
+                            captured_ocsp_response_bytes=None,
+                            reference_time=ref_time,
                         )
+                    except Exception as trust_err:
+                        logger.exception(
+                            "Offline trust analysis failed for %s/%s: %s",
+                            analysis_id,
+                            stream.stream_id,
+                            trust_err,
+                        )
+
+                    try:
+                        leaf = stream_cert_chain.certificates[0]
+                        sni = None
+                        if (
+                            stream_client_hello_result is not None
+                            and stream_client_hello_result.client_hello is not None
+                        ):
+                            sni = stream_client_hello_result.client_hello.server_name
+
+                        trust_path_context = None
+                        if stream_trust_result is not None:
+                            trust_path_context = {
+                                "trust_path_status": (
+                                    stream_trust_result
+                                    .certificate_trust
+                                    .trust_validation_status
+                                    .value
+                                )
+                            }
+
+                        stream_identity_result = identity_analyzer.analyze(
+                            cert=leaf,
+                            sni=sni,
+                            observed_mail_host=sni,
+                            dns_mx_context=None,
+                            trust_path_context=trust_path_context,
+                        )
+                    except Exception as identity_err:
+                        logger.exception(
+                            "Identity analysis failed for %s/%s: %s",
+                            analysis_id,
+                            stream.stream_id,
+                            identity_err,
+                        )
+
+                stream_tls_params = None
+                if stream_tls_handshake_observed and stream_server_hello_result is not None:
+                    sh = stream_server_hello_result.server_hello
+                    if sh is not None:
+                        stream_tls_params = {
+                            "version": sh.negotiated_version_name,
+                            "cipher_suite": sh.selected_cipher_suite_name,
+                            "frame_number": sh.first_frame_number,
+                            "timestamp": sh.first_timestamp,
+                        }
+
+                stream_kex_params = None
+                if stream_key_exchange_result is not None:
+                    stream_kex_params = stream_key_exchange_result.model_dump(mode="json")
+
+                stream_cert_params = None
+                if stream_cert_chain is not None and stream_cert_chain.certificates:
+                    leaf = stream_cert_chain.certificates[0]
+                    audit_entry = None
+                    if stream_cert_audit is not None and stream_cert_audit.certificate_audits:
+                        audit_entry = stream_cert_audit.certificate_audits[0]
+                    stream_cert_params = {
+                        "certificate_index": leaf.certificate_index,
+                        "raw_der_sha256": leaf.raw_der_sha256,
+                        "public_key_algorithm": leaf.public_key.algorithm if leaf.public_key is not None else None,
+                        "public_key_bits": leaf.public_key.key_size_bits if leaf.public_key is not None else None,
+                        "signature_algorithm": leaf.signature_algorithm_name,
+                        "not_before": leaf.not_before.isoformat() if leaf.not_before is not None else None,
+                        "not_after": leaf.not_after.isoformat() if leaf.not_after is not None else None,
+                        "is_expired": audit_entry.is_expired if audit_entry is not None else None,
+                        "is_not_yet_valid": audit_entry.is_not_yet_valid if audit_entry is not None else None,
+                        "is_self_signed": audit_entry.is_self_signed if audit_entry is not None else None,
                     }
 
-                identity_result = identity_analyzer.analyze(
-                    cert=leaf,
-                    sni=sni,
-                    observed_mail_host=sni,
-                    dns_mx_context=None,
-                    trust_path_context=trust_path_context,
-                )
-
-            except Exception as identity_err:
-                logger.exception(
-                    "Identity analysis failed for %s: %s",
-                    analysis_id,
-                    identity_err,
-                )
-
-        # ==============================================================
-        # 10. BUILD AUTHORITATIVE TLS PARAMETERS
-        # ==============================================================
-
-        tls_params = None
-
-        if tls_handshake_observed and server_hello_result is not None:
-            sh = server_hello_result.server_hello
-
-            if sh is not None:
-                tls_params = {
-                    "version": sh.negotiated_version_name,
-                    "cipher_suite": sh.selected_cipher_suite_name,
-                    "frame_number": sh.first_frame_number,
-                    "timestamp": sh.first_timestamp,
-                }
-
-        kex_params = None
-        if key_exchange_result is not None:
-            kex_params = key_exchange_result.model_dump(mode="json")
-
-        cert_params = None
-
-        if (
-            parsed_certificate_chain is not None
-            and parsed_certificate_chain.certificates
-        ):
-            leaf = parsed_certificate_chain.certificates[0]
-
-            audit_entry = None
-            if (
-                certificate_audit is not None
-                and certificate_audit.certificate_audits
-            ):
-                audit_entry = certificate_audit.certificate_audits[0]
-
-            cert_params = {
-                "certificate_index": leaf.certificate_index,
-                "raw_der_sha256": leaf.raw_der_sha256,
-                "public_key_algorithm": (
-                    leaf.public_key.algorithm
-                    if leaf.public_key is not None
-                    else None
-                ),
-                "public_key_bits": (
-                    leaf.public_key.key_size_bits
-                    if leaf.public_key is not None
-                    else None
-                ),
-                "signature_algorithm": (
-                    leaf.signature_algorithm_name
-                ),
-                "not_before": (
-                    leaf.not_before.isoformat()
-                    if leaf.not_before is not None
-                    else None
-                ),
-                "not_after": (
-                    leaf.not_after.isoformat()
-                    if leaf.not_after is not None
-                    else None
-                ),
-                "is_expired": (
-                    audit_entry.is_expired
-                    if audit_entry is not None
-                    else None
-                ),
-                "is_not_yet_valid": (
-                    audit_entry.is_not_yet_valid
-                    if audit_entry is not None
-                    else None
-                ),
-                "is_self_signed": (
-                    audit_entry.is_self_signed
-                    if audit_entry is not None
-                    else None
-                ),
-            }
-
-        starttls_params = None
-
-        # Build STARTTLS/plaintext evidence whenever a target email stream and
-        # protocol classification are available. Do not require the STARTTLS
-        # state machine to succeed: a plaintext email stream is still concrete
-        # evidence even when STARTTLS reconstruction is incomplete.
-        if target_stream is not None and target_classification is not None:
-            try:
-                protocol_value = str(
-                    getattr(
-                        target_classification.protocol,
-                        "value",
-                        target_classification.protocol,
-                    )
-                ).upper()
-
-                if starttls_assessment is not None:
-                    starttls_state = getattr(
-                        starttls_assessment.starttls_state,
-                        "value",
-                        starttls_assessment.starttls_state,
-                    )
-                    reconstruction_status = getattr(
-                        starttls_assessment.reconstruction_status,
-                        "value",
-                        starttls_assessment.reconstruction_status,
-                    )
-                    unresolved_gaps = bool(starttls_assessment.unresolved_gaps)
-                    tls_transition_detected = bool(
-                        starttls_assessment.tls_transition_detected
-                    )
+                protocol_value = str(getattr(classification.protocol, "value", classification.protocol)).upper()
+                if stream_starttls_assessment is not None:
+                    starttls_state = getattr(stream_starttls_assessment.starttls_state, "value", stream_starttls_assessment.starttls_state)
+                    reconstruction_status = getattr(stream_starttls_assessment.reconstruction_status, "value", stream_starttls_assessment.reconstruction_status)
+                    unresolved_gaps = bool(stream_starttls_assessment.unresolved_gaps)
+                    tls_transition_detected = bool(stream_starttls_assessment.tls_transition_detected)
                 else:
                     starttls_state = "UNKNOWN"
                     reconstruction_status = "UNKNOWN"
                     unresolved_gaps = False
                     tls_transition_detected = False
 
-                starttls_params = {
+                stream_starttls_params = {
                     "protocol": protocol_value,
                     "starttls_state": str(starttls_state).upper(),
                     "reconstruction_status": str(reconstruction_status).upper(),
                     "unresolved_gaps": unresolved_gaps,
                     "tls_transition_detected": tls_transition_detected,
-                    "tls_handshake_observed": bool(tls_handshake_observed),
+                    "tls_handshake_observed": bool(stream_tls_handshake_observed),
                 }
 
-                # Inspect only bytes actually reconstructed from the target
-                # email stream. This does not infer an attack or downgrade.
-                client_payload = bytes(target_stream.client_payload or b"")
-                server_payload = bytes(target_stream.server_payload or b"")
-                plaintext_blocks = (
-                    client_payload + b"\r\n" + server_payload
-                ).upper()
-
+                client_payload = bytes(stream.client_payload or b"")
+                server_payload = bytes(stream.server_payload or b"")
+                plaintext_blocks = (client_payload + b"\r\n" + server_payload).upper()
                 plaintext_markers = {
-                    "SMTP": (
-                        b"220 ", b"EHLO ", b"HELO ", b"MAIL FROM:",
-                        b"RCPT TO:", b"AUTH ", b"DATA\r\n", b"QUIT\r\n",
-                    ),
-                    "IMAP": (
-                        b"* OK ", b"* PREAUTH ", b" CAPABILITY",
-                        b" LOGIN", b" SELECT", b" AUTHENTICATE",
-                    ),
-                    "POP3": (
-                        b"+OK ", b" USER ", b" PASS ", b" RETR ",
-                        b" STAT",
-                    ),
+                    "SMTP": (b"220 ", b"EHLO ", b"HELO ", b"MAIL FROM:", b"RCPT TO:", b"AUTH ", b"DATA\r\n", b"QUIT\r\n"),
+                    "IMAP": (b"* OK ", b"* PREAUTH ", b" CAPABILITY", b" LOGIN", b" SELECT", b" AUTHENTICATE"),
+                    "POP3": (b"+OK ", b" USER ", b" PASS ", b" RETR ", b" STAT"),
                 }
-
                 markers = plaintext_markers.get(protocol_value, ())
-                plaintext_observed = any(
-                    marker in plaintext_blocks for marker in markers
+                plaintext_observed = any(m in plaintext_blocks for m in markers)
+                plaintext_auth_observed = (protocol_value == "SMTP" and b"AUTH " in plaintext_blocks)
+
+                if plaintext_observed and not stream_tls_handshake_observed:
+                    stream_starttls_params["plaintext_observed"] = True
+                    stream_starttls_params["plaintext_observed_value"] = f"PLAINTEXT_{protocol_value}"
+                if plaintext_auth_observed and not stream_tls_handshake_observed:
+                    stream_starttls_params["plaintext_auth_observed"] = True
+                    any_plaintext_auth_observed = True
+                if stream_downgrade_result is not None and stream_downgrade_result.is_downgrade_suspected:
+                    stream_starttls_params["starttls_state"] = "DOWNGRADE_SUSPECTED"
+
+                compliance_report = compliance_engine.evaluate_session(
+                    stream_id=stream.stream_id,
+                    tls_params=stream_tls_params,
+                    key_exchange_params=stream_kex_params,
+                    cert_audit_params=stream_cert_params,
+                    identity_result=stream_identity_result,
+                    trust_result=stream_trust_result,
+                    starttls_params=stream_starttls_params,
+                    reference_time=ref_time,
+                )
+                vulnerability_report = vulnerability_mapping_engine.map_session(compliance_report)
+                threat_report = threat_mapping_service.build_session_threat_report(
+                    session_id=analysis_id,
+                    stream_id=stream.stream_id,
+                    weaknesses=vulnerability_report.mappings,
                 )
 
-                plaintext_auth_observed = (
-                    protocol_value == "SMTP"
-                    and b"AUTH " in plaintext_blocks
+                all_findings.extend(compliance_report.findings)
+                all_weaknesses.extend(vulnerability_report.mappings)
+                all_threats.extend(threat_report.threat_mappings)
+
+                # Keep primary references: prefer stream with observed TLS handshake
+                if primary_tls_params is None and stream_tls_params is not None:
+                    primary_stream = stream
+                    primary_classification = classification
+                    primary_tls_params = stream_tls_params
+                    primary_kex_result = stream_key_exchange_result
+                    primary_cert_chain = stream_cert_chain
+                    primary_cert_audit = stream_cert_audit
+                    primary_cert_params = stream_cert_params
+                    primary_identity_result = stream_identity_result
+                    primary_trust_result = stream_trust_result
+                    primary_starttls_assessment = stream_starttls_assessment
+                    primary_downgrade_result = stream_downgrade_result
+                    primary_server_hello_result = stream_server_hello_result
+                elif primary_starttls_assessment is None and stream_starttls_assessment is not None:
+                    primary_starttls_assessment = stream_starttls_assessment
+                    primary_downgrade_result = stream_downgrade_result
+
+            # Deduplicate findings across streams while preserving distinct rules and streams
+            deduped_findings = []
+            seen_finding_keys = set()
+            for f in all_findings:
+                ev = f.evidence
+                k = (
+                    f.rule_id,
+                    getattr(ev, "stream_id", ""),
+                    getattr(ev, "observed_property", ""),
+                    str(getattr(ev, "observed_value", "")),
+                    getattr(ev, "certificate_index", None),
+                    getattr(ev, "raw_der_sha256", None),
                 )
+                if k not in seen_finding_keys:
+                    seen_finding_keys.add(k)
+                    deduped_findings.append(f)
 
-                if plaintext_observed and not tls_handshake_observed:
-                    starttls_params["plaintext_observed"] = True
-                    starttls_params["plaintext_observed_value"] = (
-                        f"PLAINTEXT_{protocol_value}"
-                    )
+            findings = deduped_findings
+            weakness_mappings = all_weaknesses
+            threat_mappings = all_threats
 
-                if plaintext_auth_observed and not tls_handshake_observed:
-                    starttls_params["plaintext_auth_observed"] = True
+            target_stream = primary_stream
+            target_classification = primary_classification
+            stream_id = target_stream.stream_id if len(email_streams) == 1 else "multi-stream"
 
-                if (
-                    downgrade_result is not None
-                    and downgrade_result.is_downgrade_suspected
-                ):
-                    starttls_params["starttls_state"] = "DOWNGRADE_SUSPECTED"
+            tls_params = primary_tls_params
+            key_exchange_result = primary_kex_result
+            parsed_certificate_chain = primary_cert_chain
+            certificate_audit = primary_cert_audit
+            cert_params = primary_cert_params
+            identity_result = primary_identity_result
+            trust_result = primary_trust_result
+            starttls_assessment = primary_starttls_assessment
+            downgrade_result = primary_downgrade_result
+            server_hello_result = primary_server_hello_result
+            tls_handshake_observed = bool(tls_params is not None)
 
-            except Exception as starttls_evidence_err:
-                logger.exception(
-                    "STARTTLS/plaintext evidence construction failed for %s: %s",
-                    analysis_id,
-                    starttls_evidence_err,
-                )
-                starttls_params = None
+            posture_report = posture_service.evaluate_posture(
+                session_id=analysis_id,
+                stream_id=stream_id,
+                findings=findings,
+                weaknesses=weakness_mappings,
+                threats=threat_mappings,
+                scoring_context={
+                    "plaintext_auth_observed": any_plaintext_auth_observed,
+                },
+                is_applicable=True,
+            )
+        else:
+            target_stream = classifications[0][0] if classifications else None
+            target_classification = classifications[0][1] if classifications else None
+            stream_id = target_stream.stream_id if target_stream is not None else "non-email-stream"
+            has_tls = False
+            tls_handshake_observed = False
+            tls_params = None
+            key_exchange_result = None
+            parsed_certificate_chain = None
+            certificate_audit = None
+            cert_params = None
+            identity_result = None
+            trust_result = None
+            starttls_assessment = None
+            downgrade_result = None
+            server_hello_result = None
+            findings = []
+            weakness_mappings = []
+            threat_mappings = []
+            posture_report = posture_service.evaluate_posture(
+                session_id=analysis_id,
+                stream_id=stream_id,
+                findings=[],
+                weaknesses=[],
+                threats=[],
+                is_applicable=False,
+            )
 
-        # 11. STEP 21 — DETERMINISTIC COMPLIANCE
-        # ==============================================================
-
-        stream_id = (
-            target_stream.stream_id
-            if target_stream is not None
-            else "unknown-stream"
-        )
-
-        compliance_report = compliance_engine.evaluate_session(
-            stream_id=stream_id,
-            tls_params=tls_params,
-            key_exchange_params=kex_params,
-            cert_audit_params=cert_params,
-            identity_result=identity_result,
-            trust_result=trust_result,
-            starttls_params=starttls_params,
-            reference_time=reference_time,
-        )
-
-        findings = compliance_report.findings
-
-        # ==============================================================
-        # 12. STEP 22 — VULNERABILITY / WEAKNESS MAPPING
-        # ==============================================================
-
-        vulnerability_report = vulnerability_mapping_engine.map_session(
-            compliance_report
-        )
-
-        weakness_mappings = vulnerability_report.mappings
-
-        # ==============================================================
-        # 13. STEP 23 — THREAT MAPPING
-        # ==============================================================
-
-        threat_mapping_service = ThreatMappingService()
-
-        threat_report = threat_mapping_service.build_session_threat_report(
-            session_id=analysis_id,
-            stream_id=stream_id,
-            weaknesses=weakness_mappings,
-        )
-
-        threat_mappings = threat_report.threat_mappings
-
-        # ==============================================================
-        # 14. STEP 24 — POSTURE
-        # ==============================================================
-
-        posture_service = PostureEngineService()
-
-        posture_report = posture_service.evaluate_posture(
-            session_id=analysis_id,
-            stream_id=stream_id,
-            findings=findings,
-            weaknesses=weakness_mappings,
-            threats=threat_mappings,
-            scoring_context={
-                "plaintext_auth_observed": bool(
-                    starttls_params
-                    and starttls_params.get("plaintext_auth_observed", False)
-                ),
-            },
-        )
-
-        # ==============================================================
-        # 15. STEP 25 — ML FEATURES
-        # ==============================================================
-
+        # ML feature engineering
         features = None
 
-        if target_stream is not None:
+        if is_email_applicable and target_stream is not None:
             try:
                 feature_extractor = MLFeatureEngineeringService()
 
-                # Step 25 expects explicit domain inputs rather than a stream
-                # object. Build the deterministic session context from the
-                # evidence already produced by Steps 12–24.
+                # Build deterministic session context from extracted evidence.
                 certificate_info = {}
 
                 if cert_params is not None:
@@ -909,6 +792,26 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                     else "Unavailable from captured evidence"
                 )
 
+                is_downgrade = False
+                if downgrade_result is not None:
+                    if (
+                        downgrade_result.is_downgrade_suspected
+                        or getattr(downgrade_result.status, "value", str(downgrade_result.status)) in (
+                            "DOWNGRADE_SUSPECTED",
+                            "PLAINTEXT_FALLBACK_OBSERVED",
+                        )
+                    ):
+                        is_downgrade = True
+
+                if not is_downgrade and findings:
+                    for f in findings:
+                        f_rule = getattr(f, "rule_id", None) or (f.get("rule_id") if isinstance(f, dict) else "")
+                        f_status = getattr(f, "status", None) or (f.get("status") if isinstance(f, dict) else "")
+                        f_status_val = getattr(f_status, "value", f_status)
+                        if f_rule == "RULE-STARTTLS-002" and str(f_status_val).upper() == "NON_COMPLIANT":
+                            is_downgrade = True
+                            break
+
                 ml_context = {
                     "tls_version": tls_version,
                     "cipher_suite": cipher_suite,
@@ -916,11 +819,7 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                     "certificate_info": certificate_info,
                     "certificate_key_size": certificate_key_size,
                     "signature_algorithm": signature_algorithm,
-                    "starttls_downgrade": (
-                        downgrade_result.is_downgrade_suspected
-                        if downgrade_result is not None
-                        else None
-                    ),
+                    "starttls_downgrade": is_downgrade if target_stream is not None else None,
                 }
 
                 features = feature_extractor.extract_features(
@@ -939,79 +838,61 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                     feature_err,
                 )
 
-        # ==============================================================
-        # 16. STEPS 26–28 — ML / SHAP
-        # ==============================================================
+        # ML risk classification, Anomaly detection, and SHAP explainability
+        if is_email_applicable and features is not None:
+            anomaly_res = ml_model_manager.run_anomaly_detection(features, stream_id=analysis_id)
+            risk_res = ml_model_manager.run_risk_classification(features, stream_id=analysis_id)
+            shap_res = ml_model_manager.run_shap_explanation(features, stream_id=analysis_id)
+        else:
+            ml_reason = "not_applicable" if not is_email_applicable else "feature_vector_unavailable"
+            ml_status = (
+                "Not applicable: capture is not a supported email security target."
+                if not is_email_applicable
+                else "Unavailable: no feature vector extracted from capture."
+            )
+            anomaly_res = AnomalyDetectionResult(
+                available=False,
+                stream_id=analysis_id,
+                is_anomalous=None,
+                prediction=None,
+                anomaly_score=None,
+                status_text=f"Anomaly detection {ml_status.lower()}",
+                feature_count=19,
+                model_metadata=None,
+                feature_vector=None,
+                reason=ml_reason,
+            )
+            risk_res = RiskClassificationResult(
+                available=False,
+                stream_id=analysis_id,
+                predicted_class=None,
+                class_id=None,
+                class_probabilities=None,
+                probabilities=None,
+                feature_count=19,
+                status_text=f"Risk classification {ml_status.lower()}",
+                model_metadata=None,
+                feature_vector=None,
+                reason=ml_reason,
+            )
+            shap_res = SHAPExplanationResult(
+                available=False,
+                reason=ml_reason,
+                stream_id=analysis_id,
+                base_value=None,
+                prediction=None,
+                predicted_class=None,
+                predicted_class_id=None,
+                class_probabilities={},
+                features=[],
+                feature_contributions=[],
+                top_contributions=[],
+                feature_count=19,
+                model_metadata=None,
+                status_text=f"SHAP explanation {ml_status.lower()}",
+            )
 
-        anomaly_res = None
-        risk_res = None
-        shap_res = None
-
-        if features is not None:
-            try:
-                detector = IsolationForestDetector()
-                if hasattr(detector, "detect"):
-                    anomaly_res = detector.detect(features)
-            except Exception as anomaly_err:
-                logger.exception(
-                    "Anomaly detection failed for %s: %s",
-                    analysis_id,
-                    anomaly_err,
-                )
-
-            try:
-                classifier = XGBoostRiskClassifier()
-                if hasattr(classifier, "classify"):
-                    risk_res = classifier.classify(features)
-            except Exception as risk_err:
-                logger.exception(
-                    "Risk classification failed for %s: %s",
-                    analysis_id,
-                    risk_err,
-                )
-
-            try:
-                from app.services import shap_explainer
-
-                shap_cls = getattr(
-                    shap_explainer,
-                    "SHAPExplainerService",
-                    getattr(
-                        shap_explainer,
-                        "SHAPExplainer",
-                        None,
-                    ),
-                )
-
-                if (
-                    shap_cls is not None
-                    and "classifier" in locals()
-                    and getattr(classifier, "_is_fitted", False)
-                    and getattr(classifier, "model", None) is not None
-                ):
-                    # SHAPExplainerService requires an already-fitted
-                    # XGBoostRiskClassifier. Do not instantiate SHAP against
-                    # the default unfitted classifier used by this pipeline.
-                    explainer = shap_cls(classifier)
-                    if hasattr(explainer, "explain"):
-                        shap_res = explainer.explain(features)
-                else:
-                    logger.info(
-                        "SHAP explanation skipped for %s: "
-                        "XGBoost classifier has no fitted model.",
-                        analysis_id,
-                    )
-
-            except Exception as shap_err:
-                logger.exception(
-                    "SHAP explanation failed for %s: %s",
-                    analysis_id,
-                    shap_err,
-                )
-
-        # ==============================================================
-        # 17. PROTOCOL SUMMARY
-        # ==============================================================
+        # Protocol summary
 
         detected_protocol = "Non-Email"
 
@@ -1147,9 +1028,14 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
             else "Unavailable from captured evidence"
         )
 
-        # ==============================================================
-        # 18. CONSOLIDATED REPORT
-        # ==============================================================
+        # Consolidated report generation
+        applicability_status = "APPLICABLE" if is_email_applicable else "NOT_APPLICABLE"
+        assessment_exec_status = "EVALUATED" if is_email_applicable else "NOT_APPLICABLE"
+        applicability_reason_str = (
+            None
+            if is_email_applicable
+            else "No supported email protocol/security assessment target was observed in this capture."
+        )
 
         report = ComprehensiveAnalysisReport(
             session=SessionMetadata(
@@ -1162,7 +1048,12 @@ def run_pipeline_task(analysis_id: str, pcap_path: str, filename: str):
                 ),
                 status="COMPLETED",
                 total_streams=len(streams),
+                applicability=applicability_status,
+                assessment_status=assessment_exec_status,
             ),
+            applicability=applicability_status,
+            assessment_status=assessment_exec_status,
+            applicability_reason=applicability_reason_str,
             protocol_summary=ProtocolSecuritySummary(
                 detected_protocol=detected_protocol,
                 has_tls=has_tls,

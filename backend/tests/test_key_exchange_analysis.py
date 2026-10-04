@@ -1,5 +1,5 @@
 """
-Unit tests for Step 15: Advanced Key Exchange & PFS Analysis.
+Unit tests for Advanced Key Exchange & PFS Analysis.
 Verifies deterministic assessment of ECDHE, DHE, and static RSA key exchange,
 TLS 1.3 key_share evaluation, client-offer vs server-selection priority,
 and explicit tri-state handling on gap disruptions or missing ServerHello.
@@ -329,7 +329,7 @@ def test_client_hello_key_share_without_server_hello_selection():
 # ==========================================================
 
 def test_negotiated_tls_version_comes_from_step_14():
-    """17. Negotiated version from Step 14 propagated accurately."""
+    """Negotiated TLS version propagated accurately."""
     sh = make_server_hello_result(negotiated_version=0x0304)
     res = key_exchange_analyzer.analyze(None, sh)
 
@@ -337,7 +337,7 @@ def test_negotiated_tls_version_comes_from_step_14():
 
 
 def test_selected_cipher_suite_comes_from_step_14():
-    """18. Selected cipher suite from Step 14 propagated accurately."""
+    """Selected cipher suite propagated accurately."""
     sh = make_server_hello_result(
         selected_cipher_suite_id=0xC02F,
         selected_cipher_suite_name="TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",

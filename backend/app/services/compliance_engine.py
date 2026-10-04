@@ -1,7 +1,7 @@
 """
-MailRakhwala Deterministic Cryptographic Compliance Engine Service (Step 21)
-Evaluates observed cryptographic parameters strictly against authoritative Step 4 rules.
-Pipeline: Observed Evidence -> Authoritative Step 4 Rule -> Deterministic Evaluation -> Finding -> Severity -> Recommendation
+MailRakhwala Deterministic Cryptographic Compliance Engine Service
+Evaluates observed cryptographic parameters strictly against authoritative security rules.
+Pipeline: Observed Evidence -> Authoritative Rule -> Deterministic Evaluation -> Finding -> Severity -> Recommendation
 """
 
 from datetime import datetime, timezone
@@ -27,7 +27,7 @@ from app.services.rule_loader import rule_catalog
 
 
 class ComplianceEngine:
-    """Authoritative compliance engine evaluating strictly against Step 4 rules."""
+    """Authoritative compliance engine evaluating strictly against canonical security rules."""
 
     VERSION = "21.0.0"
 
@@ -90,11 +90,10 @@ class ComplianceEngine:
         # when no TLS handshake occurred.
         findings.extend(self._eval_starttls(stream_id, starttls_params, rules_evaluated))
 
-        # Plaintext email transport is a separate evidence-based weakness.
-        # It applies only when plaintext email bytes are observed and the
-        # session did not advertise/request STARTTLS. A STARTTLS-advertised
-        # plaintext continuation is represented exclusively by RULE-STARTTLS-002
-        # to avoid duplicate findings.
+        # Plaintext email transport is an independent evidence-based security rule.
+        # It applies whenever plaintext email application bytes are observed without
+        # a successful TLS transition or handshake. An upstream violation of
+        # RULE-STARTTLS-002 does not suppress RULE-PLAINTEXT-001.
         findings.extend(self._eval_plaintext_transport(stream_id, starttls_params, rules_evaluated))
 
         # Evidence-aware deduplication
@@ -164,7 +163,7 @@ class ComplianceEngine:
 
         ver_str = str(tls["version"]).strip().upper()
 
-        if ver_str in ("SSL 2.0", "SSL 3.0", "0X0200", "0X0300", "SSLV2", "SSLV3"):
+        if ver_str in ("SSL 2.0", "SSL 3.0", "0X0200", "0X0300", "SSLV2", "SSLV3", "SSL_2_0", "SSL_3_0"):
             evaluated.add("RULE-TLS-001")
             findings.append(
                 self._build_finding(
@@ -178,7 +177,7 @@ class ComplianceEngine:
                     ts=tls.get("timestamp"),
                 )
             )
-        elif ver_str in ("TLS 1.0", "TLS 1.1", "0X0301", "0X0302"):
+        elif ver_str in ("TLS 1.0", "TLS 1.1", "0X0301", "0X0302", "TLS_1_0", "TLS_1_1"):
             evaluated.add("RULE-TLS-002")
             findings.append(
                 self._build_finding(
@@ -192,7 +191,7 @@ class ComplianceEngine:
                     ts=tls.get("timestamp"),
                 )
             )
-        elif ver_str in ("TLS 1.2", "0X0303"):
+        elif ver_str in ("TLS 1.2", "0X0303", "TLS_1_2"):
             evaluated.add("RULE-TLS-003")
             findings.append(
                 self._build_finding(
@@ -206,7 +205,7 @@ class ComplianceEngine:
                     ts=tls.get("timestamp"),
                 )
             )
-        elif ver_str in ("TLS 1.3", "0X0304"):
+        elif ver_str in ("TLS 1.3", "0X0304", "TLS_1_3"):
             evaluated.add("RULE-TLS-004")
             findings.append(
                 self._build_finding(
@@ -329,7 +328,7 @@ class ComplianceEngine:
                 self._build_finding(
                     stream_id=stream_id,
                     rule_id=target_rule,
-                    status=ComplianceStatus.UNKNOWN,
+                    status=ComplianceStatus.NON_COMPLIANT,
                     observed_prop="tls.cipher_suite",
                     observed_val=cs,
                     ref_val="Approved AEAD Suite",
@@ -679,10 +678,10 @@ class ComplianceEngine:
     ) -> List[ComplianceFinding]:
         """Evaluate concrete plaintext email transport without mislabeling it as a TLS cipher.
 
-        RULE-PLAINTEXT-001 is used only when actual email application bytes are
-        observed in cleartext and no TLS transition/handshake is present. If
-        STARTTLS was advertised/requested and plaintext then continued, that
-        condition is represented by RULE-STARTTLS-002 instead.
+        RULE-PLAINTEXT-001 is evaluated whenever actual email application bytes are
+        observed in cleartext without a successful TLS transition or handshake.
+        Independent security rules are evaluated independently: an upstream
+        violation of RULE-STARTTLS-002 does not suppress RULE-PLAINTEXT-001.
         """
         findings: List[ComplianceFinding] = []
         if not stls or not isinstance(stls, dict):
@@ -702,12 +701,8 @@ class ComplianceEngine:
 
         state = str(stls.get("starttls_state", "")).upper()
         if state in {
-            "CAPABILITY_ADVERTISED",
-            "STARTTLS_REQUESTED",
-            "SERVER_ACCEPTED",
             "SUCCEEDED",
             "TLS_TRANSITION_DETECTED",
-            "DOWNGRADE_SUSPECTED",
         }:
             return findings
 
@@ -935,7 +930,7 @@ class ComplianceEngine:
         cert_idx: Optional[int] = None,
         raw_sha: Optional[str] = None,
     ) -> ComplianceFinding:
-        # Load directly from authoritative Step 4 rule definition
+        # Load directly from authoritative rule definition
         rule_def = rule_catalog.require_rule(rule_id)
 
         # Deterministic SHA-256 identifier

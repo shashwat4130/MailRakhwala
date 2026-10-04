@@ -1,5 +1,5 @@
 """
-Tests verifying Step 20 Offline Revocation & Trust Evidence.
+Tests verifying Offline Revocation & Trust Evidence.
 Uses local deterministic cryptography fixtures without network dependencies.
 """
 

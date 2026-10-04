@@ -1,5 +1,5 @@
 """
-MailRakhwala TLS Record Layer Schemas (Step 12)
+MailRakhwala TLS Record Layer Schemas
 Passive inspection contracts for RFC 5246 / RFC 8446 TLS record framing.
 """
 

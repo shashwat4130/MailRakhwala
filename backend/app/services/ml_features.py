@@ -7,14 +7,14 @@ from app.schemas.ml_features import MLFeatureVector
 
 class MLFeatureEngineeringService:
     """
-    Step 25: Converts Step 21-24 results and session context into a deterministic
+    Converts compliance, vulnerability, and posture results and session context into a deterministic
     19-dimensional numerical feature vector for downstream ML scoring.
     """
 
     @staticmethod
     def encode_tls_version(version: Optional[str]) -> float:
         """
-        Original Step 25 Feature Contract:
+        Feature encoding contract:
           TLS 1.3       -> 4.0
           TLS 1.2       -> 3.0
           TLS 1.1       -> 2.0
@@ -24,7 +24,7 @@ class MLFeatureEngineeringService:
         """
         if not version or not str(version).strip():
             return -1.0
-        v = str(version).strip().upper()
+        v = str(version).strip().upper().replace("_", ".")
         if "1.3" in v or "TLSV1.3" in v:
             return 4.0
         if "1.2" in v or "TLSV1.2" in v:
@@ -153,9 +153,20 @@ class MLFeatureEngineeringService:
             revocation_status = 1.0
 
         # 3. Protocol Downgrade
-        starttls_downgrade = bool_to_float(ctx.get("starttls_downgrade"))
+        raw_stls = ctx.get("starttls_downgrade")
+        starttls_downgrade = bool_to_float(raw_stls)
 
-        # 4. Aggregations (Steps 21 - 24)
+        # Reflect authoritative deterministic STARTTLS downgrade findings
+        if starttls_downgrade != 1.0 and compliance_findings:
+            for f in compliance_findings:
+                f_rule = getattr(f, "rule_id", None) or (f.get("rule_id") if isinstance(f, dict) else "")
+                f_status = getattr(f, "status", None) or (f.get("status") if isinstance(f, dict) else "")
+                f_status_val = getattr(f_status, "value", f_status)
+                if f_rule == "RULE-STARTTLS-002" and str(f_status_val).upper() == "NON_COMPLIANT":
+                    starttls_downgrade = 1.0
+                    break
+
+        # Pipeline Aggregations
         c_findings = compliance_findings or []
         violation_count = 0
         unknown_count = 0
@@ -187,7 +198,7 @@ class MLFeatureEngineeringService:
         t_mappings = threat_mappings or []
         threat_mapping_count = float(len(t_mappings))
 
-        # Cryptographic Security Score propagation from Step 24
+        # Cryptographic Security Score propagation
         if posture_report is not None:
             score = getattr(posture_report, "posture_score", None)
             if score is None and isinstance(posture_report, dict):

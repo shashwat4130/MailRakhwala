@@ -1,5 +1,5 @@
 """
-MailRakhwala Reconstructed TCP Stream Schemas (Step 08)
+MailRakhwala Reconstructed TCP Stream Schemas
 Strictly bounded data contracts for bidirectional TCP streams, fragmented reassembly, and reassembly metrics.
 """
 

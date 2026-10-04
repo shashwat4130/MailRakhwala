@@ -1,5 +1,5 @@
 """
-Tests verifying Step 18 Certificate Security Audit.
+Tests verifying Certificate Security Audit.
 Deterministic offline tests checking validity, weak keys, deprecated digests, self-signed detection, and chain ordering.
 """
 

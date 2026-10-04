@@ -1,5 +1,5 @@
 """
-MailRakhwala TCP Stream Reconstruction Tests (Step 08)
+MailRakhwala TCP Stream Reconstruction Tests
 Verifies out-of-order sequencing, port reuse isolation, gap accounting,
 and non-contiguous fragment isolation.
 """

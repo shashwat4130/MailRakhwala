@@ -1,5 +1,5 @@
 """
-Unit tests for Step 14: TLS ServerHello Parser.
+Unit tests for TLS ServerHello Parser.
 Verifies parsing of handshake headers, negotiated TLS version resolution,
 selected cipher suite, TLS 1.3 key share, multi-record fragmentation,
 wrong direction rejection, and metadata correlation.

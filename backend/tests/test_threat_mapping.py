@@ -1,5 +1,5 @@
 """
-Unit and regression test suite for Step 23 Threat Mapping & Evidence Correlation.
+Unit and regression test suite for Threat Mapping & Evidence Correlation.
 """
 
 from __future__ import annotations

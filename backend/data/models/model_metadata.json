@@ -1,0 +1,243 @@
+{
+  "models": {
+    "isolation_forest": {
+      "name": "IsolationForestDetector",
+      "type": "Unsupervised Anomaly Detection",
+      "artifact": "isolation_forest.joblib",
+      "contamination": 0.15,
+      "n_estimators": 100,
+      "test_anomalies_detected": "7/36"
+    },
+    "xgboost_risk": {
+      "name": "XGBoostRiskClassifier",
+      "type": "Supervised Multi-Class Gradient Boosted Decision Trees",
+      "artifact": "xgboost_risk.joblib",
+      "classes": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "n_estimators": 100,
+      "max_depth": 3,
+      "learning_rate": 0.1,
+      "evaluation_metrics": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "confusion_matrix": [
+          [
+            12,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            6,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            12,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            6
+          ]
+        ]
+      }
+    },
+    "shap_explainer": {
+      "name": "SHAPExplainerService",
+      "type": "TreeExplainer",
+      "status": "OPERATIONAL",
+      "sample_verifications": [
+        {
+          "pcap": "0234_cert_bad_033.pcap",
+          "scenario": "cert_bad",
+          "predicted_class": "CRITICAL",
+          "base_value": -0.309062659740448,
+          "top_features": [
+            {
+              "feature_name": "certificate_key_size",
+              "actual_value": 1024.0,
+              "shap_value": 2.5525,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cipher_security_score",
+              "actual_value": 3.0,
+              "shap_value": 0.3684,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "high_critical_finding_count",
+              "actual_value": 2.0,
+              "shap_value": -0.1392,
+              "impact": "DECREASES_PREDICTED_CLASS"
+            }
+          ]
+        },
+        {
+          "pcap": "0222_cert_bad_021.pcap",
+          "scenario": "cert_bad",
+          "predicted_class": "CRITICAL",
+          "base_value": -0.309062659740448,
+          "top_features": [
+            {
+              "feature_name": "certificate_key_size",
+              "actual_value": 1024.0,
+              "shap_value": 2.5517,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "high_critical_finding_count",
+              "actual_value": 3.0,
+              "shap_value": 0.5487,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cipher_security_score",
+              "actual_value": 3.0,
+              "shap_value": 0.3684,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            }
+          ]
+        },
+        {
+          "pcap": "0229_cert_bad_028.pcap",
+          "scenario": "cert_bad",
+          "predicted_class": "CRITICAL",
+          "base_value": -0.309062659740448,
+          "top_features": [
+            {
+              "feature_name": "certificate_key_size",
+              "actual_value": 1024.0,
+              "shap_value": 2.5517,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cipher_security_score",
+              "actual_value": 3.0,
+              "shap_value": 0.3684,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "high_critical_finding_count",
+              "actual_value": 2.0,
+              "shap_value": -0.135,
+              "impact": "DECREASES_PREDICTED_CLASS"
+            }
+          ]
+        },
+        {
+          "pcap": "0224_cert_bad_023.pcap",
+          "scenario": "cert_bad",
+          "predicted_class": "CRITICAL",
+          "base_value": -0.309062659740448,
+          "top_features": [
+            {
+              "feature_name": "certificate_key_size",
+              "actual_value": 1024.0,
+              "shap_value": 2.4129,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cipher_security_score",
+              "actual_value": 3.0,
+              "shap_value": 0.3684,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cryptographic_security_score",
+              "actual_value": 88.0,
+              "shap_value": 0.0074,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            }
+          ]
+        },
+        {
+          "pcap": "0231_cert_bad_030.pcap",
+          "scenario": "cert_bad",
+          "predicted_class": "CRITICAL",
+          "base_value": -0.309062659740448,
+          "top_features": [
+            {
+              "feature_name": "certificate_key_size",
+              "actual_value": 1024.0,
+              "shap_value": 2.5525,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "high_critical_finding_count",
+              "actual_value": 3.0,
+              "shap_value": 0.5445,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            },
+            {
+              "feature_name": "cipher_security_score",
+              "actual_value": 3.0,
+              "shap_value": 0.3684,
+              "impact": "INCREASES_PREDICTED_CLASS"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "dataset": {
+    "name": "Synthetic Mail Rakhwala Demo Scenarios",
+    "label": "Statistical Risk Model",
+    "disclaimer": "This model is a calibrated statistical demonstration trained on Mail Rakhwala scenarios. Deterministic security evaluation remains the authoritative baseline.",
+    "nature": "Calibrated statistical demonstration corpus",
+    "scenarios": [
+      "tls_modern",
+      "starttls_clean",
+      "weak_tls",
+      "starttls_downgrade",
+      "plaintext",
+      "cert_bad"
+    ],
+    "total_samples": 240,
+    "split": {
+      "train_samples": 168,
+      "validation_samples": 36,
+      "test_samples": 36,
+      "ratio": "70% train / 15% validation / 15% held-out test"
+    },
+    "random_seed": 20261002
+  },
+  "features": {
+    "count": 19,
+    "names": [
+      "tls_version_numeric",
+      "cipher_security_score",
+      "key_exchange_strength",
+      "pfs_enabled",
+      "certificate_key_size",
+      "certificate_signature_strength",
+      "certificate_validity_status",
+      "san_present",
+      "hostname_match_status",
+      "trust_validation_status",
+      "revocation_status",
+      "starttls_downgrade",
+      "compliance_violation_count",
+      "unknown_finding_count",
+      "high_critical_finding_count",
+      "vulnerability_count",
+      "threat_mapping_count",
+      "cryptographic_security_score",
+      "ja4_available"
+    ]
+  },
+  "training_date": "2026-10-03T12:19:44.777343+00:00",
+  "model_version": "1.0.0-demo-synthetic"
+}

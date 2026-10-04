@@ -1,5 +1,5 @@
 """
-MailRakhwala Email Protocol Classification Schemas (Step 09)
+MailRakhwala Email Protocol Classification Schemas
 Data contracts for multi-signal passive classification of reconstructed TCP streams.
 """
 

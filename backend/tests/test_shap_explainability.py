@@ -173,7 +173,7 @@ def test_unknown_minus_one_value_handling_and_preservation(shap_service, synthet
 
     # Original value must stay -1.0
     assert tls_contrib.original_value == -1.0
-    # Model input value must be the Step 27 computed reference median
+    # Model input value must be the computed reference median
     assert math.isclose(tls_contrib.model_input_value, expected_median_col0, abs_tol=1e-6)
     assert tls_contrib.model_input_value != -1.0
 

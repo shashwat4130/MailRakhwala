@@ -1,4 +1,4 @@
-"""Tests for Step 21 Compliance Engine Data Contracts."""
+"""Tests for Compliance Engine Data Contracts."""
 
 from datetime import datetime, timezone
 import pytest

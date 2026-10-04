@@ -1,5 +1,5 @@
 """
-PCAP and PCAPNG Header Validator (Step 06)
+PCAP and PCAPNG Header Validator
 Defensive binary inspection for libpcap and pcapng file magic and structures.
 """
 

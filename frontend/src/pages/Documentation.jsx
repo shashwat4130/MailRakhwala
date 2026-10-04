@@ -1,7 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   ShieldCheck,
   Network,
   LockKeyhole,
@@ -13,7 +11,10 @@ import {
   Server,
   Layers3,
   ChevronRight,
+  ExternalLink,
+  BookOpen,
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 const sections = [
   {
@@ -28,7 +29,7 @@ const sections = [
           PCAP or PCAPNG files, evaluates protocol and TLS security, identifies
           evidence-backed findings, and produces a security posture report.
         </p>
-        <p>
+        <p className="mt-2">
           The platform is designed to turn raw packet captures into an
           understandable security assessment without requiring the user to
           inspect packets manually.
@@ -56,7 +57,7 @@ const sections = [
               {number}
             </span>
             <h3 className="mt-2 font-bold text-[#192837]">{title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-[#192837]/55">
+            <p className="mt-1.5 text-xs leading-relaxed text-[#192837]/55">
               {description}
             </p>
           </div>
@@ -95,7 +96,7 @@ const sections = [
               <Icon className="h-5 w-5" />
             </div>
             <h3 className="mt-4 font-bold text-[#192837]">{title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-[#192837]/55">
+            <p className="mt-2 text-xs leading-relaxed text-[#192837]/55">
               {text}
             </p>
           </div>
@@ -104,100 +105,41 @@ const sections = [
     ),
   },
   {
-    id: 'security',
-    title: 'Security Evaluation',
+    id: 'standards',
+    title: 'Conformance Standards & Baselines',
     icon: LockKeyhole,
     content: (
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          ['Protocol Analysis', 'Identifies and evaluates email protocols present in the capture.'],
-          ['TLS Analysis', 'Checks connection security and TLS-related observations.'],
-          ['Cryptographic Review', 'Surfaces security-relevant cryptographic properties and evidence.'],
-          ['Plaintext Detection', 'Identifies evidence of email traffic exposed without adequate transport protection.'],
-        ].map(([title, text]) => (
-          <div key={title} className="rounded-2xl border border-blue-100 bg-white p-4">
-            <h3 className="font-bold text-[#192837]">{title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-[#192837]/55">
-              {text}
-            </p>
-          </div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    id: 'findings',
-    title: 'Evidence & Findings',
-    icon: Search,
-    content: (
-      <>
+      <div className="space-y-3">
         <p>
-          Findings are linked to observed evidence from the analyzed traffic.
-          The application keeps the evidence, observed properties, and rule
-          references together so that a result can be traced back to what was
-          actually seen in the capture.
+          MailRakhwala evaluates email sessions against authoritative Internet Engineering Task Force (IETF)
+          and NIST cryptographic standards:
         </p>
-        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-          <div className="flex items-start gap-3">
-            <FileCheck2 className="mt-0.5 h-5 w-5 shrink-0 text-[#0B5ED7]" />
-            <div>
-              <p className="font-semibold text-[#192837]">Evidence-backed reporting</p>
-              <p className="mt-1 text-sm leading-relaxed text-[#192837]/55">
-                Each relevant finding can be connected to the observed traffic
-                property and its associated security rule.
-              </p>
-            </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 p-3 bg-white">
+            <span className="font-mono text-xs font-bold text-blue-700 block">RFC 8314</span>
+            <span className="text-xs text-slate-600 block mt-1">
+              Cleartext Considered Obsolete: Use of TLS for Email Submission and Access
+            </span>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3 bg-white">
+            <span className="font-mono text-xs font-bold text-blue-700 block">RFC 3207</span>
+            <span className="text-xs text-slate-600 block mt-1">
+              SMTP Service Extension for Secure SMTP over Transport Layer Security
+            </span>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3 bg-white">
+            <span className="font-mono text-xs font-bold text-blue-700 block">RFC 7525</span>
+            <span className="text-xs text-slate-600 block mt-1">
+              Recommendations for Secure Use of Transport Layer Security (TLS)
+            </span>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3 bg-white">
+            <span className="font-mono text-xs font-bold text-blue-700 block">NIST SP 800-52r2</span>
+            <span className="text-xs text-slate-600 block mt-1">
+              Selection, Configuration, and Use of TLS Implementations
+            </span>
           </div>
         </div>
-      </>
-    ),
-  },
-  {
-    id: 'posture',
-    title: 'Security Posture',
-    icon: BarChart3,
-    content: (
-      <>
-        <p>
-          MailRakhwala converts verified security deductions into a final
-          posture score. The score starts from a base of 100, applies the
-          penalties produced by the verified rules, and is constrained to the
-          0–100 range.
-        </p>
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-[#061A3A] p-5 text-white">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">
-            Score calculation
-          </p>
-          <p className="mt-3 font-mono text-sm sm:text-base">
-            Final Score = max(0, min(100, 100 − Total Penalty))
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-white/60">
-            The dashboard exposes the deductions and evidence behind the final
-            score so the result can be reviewed rather than treated as a black box.
-          </p>
-        </div>
-      </>
-    ),
-  },
-  {
-    id: 'reports',
-    title: 'Reports & Dashboard',
-    icon: FileCheck2,
-    content: (
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          ['Security Dashboard', 'Summarizes the analyzed capture, posture score, and major findings.'],
-          ['Score Analysis', 'Explains how the final posture score was derived from deductions.'],
-          ['Full Report', 'Provides the detailed analysis view available inside the application.'],
-          ['Forensic Report', 'Exports the analysis as a PDF for sharing or review.'],
-        ].map(([title, text]) => (
-          <div key={title} className="rounded-2xl border border-blue-100 bg-white p-4">
-            <h3 className="font-bold text-[#192837]">{title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-[#192837]/55">
-              {text}
-            </p>
-          </div>
-        ))}
       </div>
     ),
   },
@@ -208,23 +150,24 @@ const sections = [
     content: (
       <div className="overflow-hidden rounded-2xl border border-blue-100">
         {[
-          ['Frontend', 'React + Vite', 'Interactive analysis interface and dashboard'],
-          ['UI', 'Tailwind CSS + Framer Motion', 'Responsive styling and interface animation'],
-          ['Backend', 'Python + FastAPI', 'Analysis APIs, jobs, reports, and backend services'],
-          ['Traffic Analysis', 'PCAP / PCAPNG processing', 'Packet, stream, protocol, and email-traffic analysis'],
-          ['Reports', 'JSON + PDF', 'Machine-readable and shareable analysis output'],
+          ['Frontend', 'React 19 + Vite', 'Interactive analysis console and dashboard'],
+          ['UI', 'Tailwind CSS + Framer Motion', 'Responsive styling and subtle micro-interactions'],
+          ['Visualizations', 'Recharts', 'Dynamic charts for severity, categories, and SHAP'],
+          ['Backend', 'Python + FastAPI', 'Analysis pipelines, reports, and streaming job APIs'],
+          ['Traffic Analysis', 'Scapy / dpkt / PCAP parser', 'Packet, stream, protocol, and email TLS dissection'],
+          ['Reports', 'JSON + PDF (ReportLab)', 'Deterministic forensic and executive reporting'],
         ].map(([area, technology, role], index) => (
           <div
             key={area}
-            className={`grid gap-1 px-4 py-3.5 sm:grid-cols-[150px_190px_1fr] sm:items-center ${
+            className={`grid gap-1 px-4 py-3 sm:grid-cols-[140px_180px_1fr] sm:items-center text-xs ${
               index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'
             }`}
           >
-            <span className="text-xs font-bold uppercase tracking-wider text-[#0B5ED7]">
+            <span className="font-bold uppercase tracking-wider text-[#0B5ED7]">
               {area}
             </span>
-            <span className="text-sm font-semibold text-[#192837]">{technology}</span>
-            <span className="text-sm text-[#192837]/55">{role}</span>
+            <span className="font-semibold text-[#192837]">{technology}</span>
+            <span className="text-[#192837]/60">{role}</span>
           </div>
         ))}
       </div>
@@ -233,113 +176,95 @@ const sections = [
 ];
 
 export default function Documentation() {
-  const navigate = useNavigate();
+  const apiDocsUrl =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:8001/docs'
+      : '/docs';
 
   return (
-    <div className="min-h-[100dvh] bg-[#f8fbff] text-[#192837]">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-[20%] -top-[20%] h-[55vh] w-[55vw] rounded-full bg-blue-300/15 blur-[130px]" />
-        <div className="absolute -right-[20%] top-[8%] h-[55vh] w-[55vw] rounded-full bg-cyan-300/12 blur-[130px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_55%,rgba(255,255,255,0.45)_100%)]" />
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <PageHeader
+          category="SYSTEM"
+          title="Documentation"
+          description="Technical architecture, evaluation methodologies, RFC baselines, and developer API references for MailRakhwala."
+        />
+
+        {/* OpenAPI /docs Link */}
+        <a
+          href={apiDocsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all shrink-0 self-start sm:self-auto"
+        >
+          <BookOpen className="h-4 w-4" />
+          <span>Interactive API Docs (/docs)</span>
+          <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+        </a>
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-[1180px] px-5 pb-12 sm:px-8">
-        <header className="flex items-center justify-between gap-4 pt-5 sm:pt-7">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-100 bg-white/90 px-3.5 text-xs font-bold text-[#192837] shadow-sm backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:text-[#0B5ED7]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Home
-          </button>
+      <div className="grid gap-6 lg:grid-cols-[220px_1fr] lg:items-start">
+        {/* Sticky Table of Contents */}
+        <aside className="lg:sticky lg:top-6">
+          <div className="rounded-2xl border border-blue-100 bg-white p-3 shadow-sm">
+            <p className="px-3 pb-2 text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#0B5ED7]">
+              Table of Contents
+            </p>
+            <nav aria-label="Documentation sections" className="space-y-0.5">
+              {sections.map(({ id, title }) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-blue-50 hover:text-[#0B5ED7] transition-colors"
+                >
+                  {title}
+                  <ChevronRight className="h-3.5 w-3.5 opacity-40" />
+                </a>
+              ))}
+            </nav>
 
-          <div className="hidden rounded-full border border-blue-100 bg-white/80 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#0B5ED7] shadow-sm sm:block">
-            Technical Documentation
-          </div>
-        </header>
-
-        <section className="pt-8 text-center sm:pt-10">
-          <div className="mx-auto flex h-[195px] w-[540px] max-w-full items-center justify-center sm:h-[220px] sm:w-[660px]">
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              src="/mailrakhwala-logo.mp4"
-              className="h-full w-full object-contain mix-blend-multiply"
-              aria-label="MailRakhwala"
-            />
-          </div>
-
-          <p className="mx-auto mt-1 max-w-2xl text-sm leading-relaxed text-[#192837]/55 sm:text-base">
-            Technical overview of the MailRakhwala email traffic security
-            analysis platform.
-          </p>
-        </section>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-[220px_1fr] lg:items-start">
-          <aside className="lg:sticky lg:top-6">
-            <div className="rounded-2xl border border-blue-100 bg-white/85 p-3 shadow-[0_14px_45px_rgba(15,76,160,0.08)] backdrop-blur-xl">
-              <p className="px-3 pb-2 text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#0B5ED7]">
-                Contents
-              </p>
-              <nav aria-label="Documentation sections" className="space-y-0.5">
-                {sections.map(({ id, title }) => (
-                  <a
-                    key={id}
-                    href={`#${id}`}
-                    className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-[#192837]/65 transition-colors hover:bg-blue-50 hover:text-[#0B5ED7]"
-                  >
-                    {title}
-                    <ChevronRight className="h-3.5 w-3.5 opacity-40" />
-                  </a>
-                ))}
-              </nav>
-            </div>
-          </aside>
-
-          <main className="space-y-5">
-            {sections.map(({ id, title, icon: Icon, content }) => (
-              <section
-                key={id}
-                id={id}
-                className="scroll-mt-6 rounded-[24px] border border-blue-100/90 bg-white/90 p-5 shadow-[0_14px_45px_rgba(15,76,160,0.07)] backdrop-blur-xl sm:p-7"
+            <div className="mt-4 pt-3 border-t border-slate-100 px-3">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                Developer API
+              </span>
+              <a
+                href={apiDocsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800"
               >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-lg font-extrabold tracking-tight text-[#192837] sm:text-xl">
-                      {title}
-                    </h2>
-                    <div className="mt-4 text-sm leading-7 text-[#192837]/65">
-                      {content}
-                    </div>
+                FastAPI Swagger UI
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content Sections */}
+        <div className="space-y-5">
+          {sections.map(({ id, title, icon: Icon, content }) => (
+            <section
+              key={id}
+              id={id}
+              className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-bold text-slate-900">
+                    {title}
+                  </h2>
+                  <div className="mt-3 text-xs leading-relaxed text-slate-600">
+                    {content}
                   </div>
                 </div>
-              </section>
-            ))}
-          </main>
+              </div>
+            </section>
+          ))}
         </div>
-
-        <footer className="mt-8 flex flex-col items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white/75 px-5 py-4 text-center shadow-sm sm:flex-row sm:text-left">
-          <div>
-            <p className="text-xs font-bold text-[#192837]">MailRakhwala</p>
-            <p className="mt-0.5 text-[10px] text-[#192837]/45">
-              Email security intelligence for captured traffic.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B5ED7] hover:underline"
-          >
-            Return to analysis
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </footer>
       </div>
     </div>
   );
