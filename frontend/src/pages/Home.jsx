@@ -56,8 +56,7 @@ export default function Home() {
   const captureConsoleRef = useRef(null);
 
   return (
-    <div className="relative min-h-[100dvh] w-full bg-[#F7F7F5] text-[#111111] py-2 sm:py-2.5 px-3 sm:px-6 lg:px-8 flex flex-col justify-between select-none overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-0 technical-grid-light opacity-50" />
+    <div className="relative min-h-[100dvh] w-full bg-white text-[#111111] py-2 sm:py-2.5 px-3 sm:px-6 lg:px-8 flex flex-col justify-between select-none overflow-x-hidden">
 
       <div className="relative z-20 w-full flex justify-end items-center gap-2.5 pr-0 sm:pr-2 lg:pr-3 pt-0.5 pb-0">
         <a
@@ -69,6 +68,7 @@ export default function Home() {
           <PlayCircle className="h-4 w-4" />
           <span>Demo Video</span>
         </a>
+
         <NavLink
           to={RESOURCE_LINKS.documentation}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#111111] px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#222222] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-2"
