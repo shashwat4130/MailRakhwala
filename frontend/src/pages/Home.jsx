@@ -48,7 +48,7 @@ const itemFadeUp = {
 };
 
 const RESOURCE_LINKS = {
-  demoVideo: 'https://youtu.be/qoJzP9L7Bps',
+  demoVideo: 'https://youtu.be/xcHMo0NGuwM',
   documentation: '/documentation',
 };
 
