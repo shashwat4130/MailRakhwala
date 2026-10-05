@@ -733,15 +733,22 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Card 1: Findings by Severity - Restored Bar Chart with Real Data */}
+            {/* Card 1: Finding Severity */}
             <Card className="p-5 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
-                    <ShieldAlert className="h-4 w-4 text-neutral-700" />
-                    Findings by Severity
-                  </h3>
-                  <span className="text-[11px] text-neutral-500 font-mono font-bold">{analytics.totalFindings} Finding Instances</span>
+                <div className="mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-neutral-700" />
+                      Finding Severity
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded">
+                      HOW SEVERE?
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#666666] mt-1 leading-relaxed">
+                    Shows how findings are distributed by risk severity.
+                  </p>
                 </div>
 
                 <div className="h-44 w-full pt-1">
@@ -782,20 +789,27 @@ export default function Dashboard() {
               </div>
 
               <div className="mt-4 pt-3 border-t border-[#F0F0EB] flex items-center justify-between text-[11px] text-neutral-500 font-mono">
-                <span>Total finding instances: <strong className="text-[#111111]">{analytics.totalFindings}</strong></span>
+                <span>Total Findings: <strong className="text-[#111111]">{analytics.totalFindings}</strong></span>
                 <span>Critical + High: <strong className={seriousIssues > 0 ? 'text-rose-600' : 'text-emerald-700'}>{seriousIssues}</strong></span>
               </div>
             </Card>
 
-            {/* Card 2: Compliance Status Donut (Requirement 11.B - Center Total & Percentages) */}
+            {/* Card 2: Compliance Status */}
             <Card className="p-5 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-neutral-700" />
-                    Compliance Status
-                  </h3>
-                  <span className="text-[11px] text-neutral-500 font-mono font-bold">RFC Conformance</span>
+                <div className="mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-neutral-700" />
+                      Compliance Status
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded">
+                      HOW DID THE FINDINGS PERFORM?
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#666666] mt-1 leading-relaxed">
+                    Shows how findings performed against security compliance requirements: Passed, Failed, or Unknown.
+                  </p>
                 </div>
 
                 <div className="relative h-44 w-full flex items-center justify-center">
@@ -804,7 +818,7 @@ export default function Dashboard() {
                       <Pie
                         data={statusData.filter((d) => d.count > 0)}
                         dataKey="count"
-                        nameKey="name"
+                        nameKey="label"
                         cx="50%"
                         cy="50%"
                         innerRadius={50}
@@ -853,15 +867,22 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            {/* Card 3: Issue Categories (Requirement 11.C - Horizontal Ranking Bars) */}
+            {/* Card 3: Security Domain */}
             <Card className="p-5 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
-                    <Layers3 className="h-4 w-4 text-neutral-700" />
-                    Issue Categories
-                  </h3>
-                  <span className="text-[11px] text-neutral-500 font-mono font-bold">5 Domains</span>
+                <div className="mb-3.5 pb-2.5 border-b border-[#E5E5E0]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#111111] flex items-center gap-2">
+                      <Layers3 className="h-4 w-4 text-neutral-700" />
+                      Security Domain
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 bg-[#F7F7F5] border border-[#E5E5E0] px-2 py-0.5 rounded">
+                      WHERE?
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#666666] mt-1 leading-relaxed">
+                    Shows which security areas the findings relate to.
+                  </p>
                 </div>
 
                 <div className="space-y-3 pt-1">
@@ -871,16 +892,19 @@ export default function Dashboard() {
                         <span className="font-semibold text-[#111111] truncate max-w-[170px]" title={cat.name}>
                           {cat.name}
                         </span>
-                        <div className="flex items-center gap-1.5 font-mono text-[10px]">
-                          {cat.findingsCount > 0 ? (
-                            <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                              {cat.findingsCount} {cat.findingsCount === 1 ? 'finding' : 'findings'} / {cat.evaluatedCount} evaluated
-                            </span>
-                          ) : (
-                            <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                              0 findings / {cat.evaluatedCount} evaluated • Passed
-                            </span>
-                          )}
+                        <div className="flex items-center gap-2 font-mono text-[10px]">
+                          <span
+                            className={
+                              cat.findingsCount > 0
+                                ? 'font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded'
+                                : 'font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded'
+                            }
+                          >
+                            {cat.evaluatedCount} {cat.evaluatedCount === 1 ? 'finding' : 'findings'}
+                          </span>
+                          <span className="text-neutral-400 font-mono text-[10px] w-7 text-right">
+                            {cat.percent}%
+                          </span>
                         </div>
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-[#F0F0EB] overflow-hidden">
@@ -897,9 +921,9 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="mt-5 pt-3 border-t border-[#F0F0EB] text-[11px] text-neutral-500 font-mono flex items-center justify-between">
-                <span>Functional domains:</span>
-                <span className="font-bold text-[#111111]">{categoryData.length} active domains</span>
+              <div className="mt-4 pt-3 border-t border-[#F0F0EB] text-[11px] text-neutral-500 font-mono flex items-center justify-between">
+                <span>Security Domains: <strong className="text-[#111111]">{categoryData.length}</strong></span>
+                <span>Total Findings: <strong className="text-[#111111]">{analytics.totalFindings}</strong></span>
               </div>
             </Card>
           </div>
